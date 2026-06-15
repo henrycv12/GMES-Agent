@@ -25,23 +25,25 @@ User query (Streamlit)
     → ChromaDB.query(top_k) → matching WO chunks
     → [recency re-rank if "recent/latest/last" in query]
     → build_prompt(query, items)
-    → ollama.chat(llama3.2:1b) → answer text
+    → Azure OpenAI gpt-4o chat → answer text  [fallback: ollama.chat(llama3.2:1b)]
     → Streamlit display + expandable source WOs
 ```
 
 ## External dependencies
-- **Ollama** — must be running locally (`ollama serve`). Models needed:
-  - `llama3.2:1b` (default LLM)
-  - `llama3.2:3b` (optional, better quality)
-  - `nomic-embed-text` (fallback embeddings only, if no `.env`)
-- **Azure OpenAI** — `text-embedding-3-small` via `embed-model` deployment. Credentials in `.env` (gitignored)
+- **Azure OpenAI** — primary provider for both embeddings and LLM. Credentials in `.env` (gitignored)
+  - `text-embedding-3-small` via `embed-model` deployment
+  - `gpt-4o` via `gpt-4o` deployment
+- **Ollama** — fallback only if `.env` is missing (`ollama serve` must be running)
+  - `llama3.2:1b` (fallback LLM)
+  - `nomic-embed-text` (fallback embeddings)
 - **ChromaDB** — file-based, no server needed, stored in `./chroma_db/`
 - **GMES** — source of work order exports (manual export, `.xlsx` or `.csv`)
 
 ## Key constants (app.py)
 - `WO_COLLECTION = "work_orders"` — ChromaDB collection name
 - `EMBED_MODEL = "nomic-embed-text"` — Ollama fallback only
-- `OLLAMA_MODEL = "llama3.2:1b"`
+- `AZURE_LLM_DEPLOY = "gpt-4o"` — Azure OpenAI chat deployment
+- `OLLAMA_MODEL = "llama3.2:1b"` — fallback only
 - `TOP_K = 6` — work orders retrieved per query
 - `RECENCY_KEYWORDS` — triggers date re-ranking when matched in query
 - `USE_AZURE` — auto-set from `.env`; switches embed provider

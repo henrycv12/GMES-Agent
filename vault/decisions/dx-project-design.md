@@ -38,14 +38,14 @@ Data Layer       → Azure SQL Database
 
 ## What We Built Instead (MES Local — current)
 
-| Original | MES Local equivalent |
-|---|---|
-| Microsoft Teams / Copilot Studio | Streamlit chat UI (local) |
-| Azure AI Search (vector) | ChromaDB (local persistent vector DB) |
-| Azure OpenAI GPT-4 (reasoning) | Ollama `llama3.2:1b` (local LLM) |
-| Azure OpenAI embeddings | Azure OpenAI `text-embedding-3-small` ✅ |
-| Azure SQL Database | GMES `.xlsx`/`.csv` export (local) |
-| Nightly automated sync | Manual export from GMES |
+| Original | MES Local equivalent | Status |
+|---|---|---|
+| Microsoft Teams / Copilot Studio | Streamlit chat UI (local) | 🟡 Partial |
+| Azure AI Search (vector) | ChromaDB (local persistent vector DB) | ✅ Done |
+| Azure OpenAI GPT-4 (reasoning) | Azure OpenAI `gpt-4o` | ✅ Done |
+| Azure OpenAI embeddings | Azure OpenAI `text-embedding-3-small` | ✅ Done |
+| Azure SQL Database | GMES `.xlsx`/`.csv` export (local) | 🟡 Partial |
+| Nightly automated sync | Manual export from GMES | ❌ Pending |
 
 ---
 
@@ -88,10 +88,17 @@ Data Layer       → Azure SQL Database
 ---
 
 ## Gap Analysis — What MES Local Still Needs
+
+### ✅ Completed
+- [x] **Azure OpenAI embeddings** (`text-embedding-3-small` via `embed-model`) — Jun 15 2026
+- [x] **Azure OpenAI LLM** (`gpt-4o`) — Jun 15 2026
+- [x] **Response time ≤5 sec** — achieved ~2–5 sec with GPT-4o — Jun 15 2026
+- [x] **19,000+ work orders indexed** (1 year of data from GMES) — Jun 15 2026
+
+### 🟡 Pending
+- [ ] **Recurring failure analytics** — top-N failures by line/shop/date range (high value per DX KPIs)
 - [ ] **Create PM Task** output action
-- [ ] **Export Summary** (cited records to share)
-- [ ] **Recurring failure analytics** (top-N failures by line/shop/date range)
+- [ ] **Export Summary** — cited records ready to share with team
+- [ ] **Cross-line pattern queries** — current retrieval is semantic, not aggregated
 - [ ] **Automated nightly sync** from GMES (currently manual export)
 - [ ] **Teams integration** (currently local Streamlit only)
-- [ ] **Cross-line pattern queries** (current retrieval is semantic, not aggregated)
-- [ ] Response time target ≤5 sec (currently ~15–25 sec due to local Ollama LLM)
