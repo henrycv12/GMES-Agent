@@ -20,8 +20,8 @@ Document what this project does, current status, tech stack, key file map, and k
 Document architecture, module responsibilities, data flow, external dependencies, and deployment target.
 
 ## STEP 4 — Fill vault/
-- `vault/config/` — Ollama model names, ChromaDB path, column mappings, TOP_K value
-- `vault/decisions/` — why Azure was replaced with local stack, why llama3.2:1b chosen
+- `vault/config/` — Azure embed deployment name, Ollama model names, ChromaDB path, column mappings, TOP_K value
+- `vault/decisions/` — why Azure OpenAI for embeddings, why llama3.2:1b for LLM
 - `vault/known-issues/` — current bugs and workarounds
 - `vault/architecture/` — RAG pipeline diagram or description
 
