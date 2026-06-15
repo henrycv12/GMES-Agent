@@ -2,7 +2,6 @@ import glob
 import pandas as pd
 import chromadb
 import ollama
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 EXCEL_FOLDER = "."           # scans all .xlsx files in this folder
 CHROMA_DIR = "./chroma_db"
@@ -146,24 +145,15 @@ def ingest_excel():
         "maint_type": r["maint_type"],
     } for r in new_records]
 
-    WORKERS = 6
-    print(f"  Using {WORKERS} parallel workers...")
-    embeddings = [None] * len(texts)
-
-    def embed_one(args):
-        idx, text = args
-        resp = ollama.embeddings(model=EMBED_MODEL, prompt=text[:1500])
-        return idx, resp["embedding"]
-
-    completed = 0
-    with ThreadPoolExecutor(max_workers=WORKERS) as executor:
-        futures = {executor.submit(embed_one, (i, t)): i for i, t in enumerate(texts)}
-        for future in as_completed(futures):
-            idx, emb = future.result()
-            embeddings[idx] = emb
-            completed += 1
-            if completed % 500 == 0:
-                print(f"  Embedded {completed}/{len(texts)}...")
+    EMBED_BATCH = 100
+    embeddings = []
+    total_texts = len(texts)
+    for start in range(0, total_texts, EMBED_BATCH):
+        end = min(start + EMBED_BATCH, total_texts)
+        batch_texts = [t[:1500] for t in texts[start:end]]
+        resp = ollama.embed(model=EMBED_MODEL, input=batch_texts)
+        embeddings.extend(resp.embeddings)
+        print(f"  Embedded {end}/{total_texts}...")
 
     BATCH_SIZE = 500
     total = len(texts)
