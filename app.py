@@ -3,6 +3,7 @@ import os
 import sys
 import streamlit as st
 import chromadb
+import ollama
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -29,8 +30,6 @@ if USE_AZURE:
         azure_endpoint=AZURE_ENDPOINT,
         api_version="2024-12-01-preview",
     )
-else:
-    import ollama
 
 RECENCY_KEYWORDS = {
     "recent", "latest", "last", "newest", "most recent",
