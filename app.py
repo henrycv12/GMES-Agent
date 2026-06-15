@@ -120,42 +120,49 @@ def retrieve_context(query, collection, top_k=TOP_K):
     return items
 
 
-def build_prompt(query, items):
+SYSTEM_BASE = (
+    "You are an expert maintenance technician assistant for LG Electronics TN Production Engineering. "
+    "You have access to historical work order records from GMES. "
+    "When answering: identify similar past failures and resolutions, reference specific WO numbers and equipment IDs, "
+    "suggest likely causes based on historical patterns, give step-by-step guidance based on what has worked before. "
+    "If no relevant history exists, clearly say so."
+)
+
+
+def build_messages(query, items, history):
     context = ""
     for item in items:
         context += f"\n--- {item['ref']} ---\n{item['text']}\n"
 
-    return f"""You are an expert maintenance technician assistant with access to a database of historical work orders from a manufacturing facility.
+    system_prompt = (
+        f"{SYSTEM_BASE}\n\n"
+        f"RELEVANT WORK ORDERS FOR THIS QUERY:\n{context}"
+    )
 
-Use the work order records below to answer the technician's question.
-- Identify similar past failures and how they were resolved
-- Reference specific work order numbers and equipment IDs
-- Suggest likely causes based on historical patterns
-- Give step-by-step guidance based on what has worked before
-- If no relevant history exists, clearly say so and suggest general troubleshooting steps
+    messages = [{"role": "system", "content": system_prompt}]
 
-HISTORICAL WORK ORDERS:
-{context}
+    for msg in history:
+        if msg["role"] in ("user", "assistant"):
+            messages.append({"role": msg["role"], "content": msg["content"]})
 
-TECHNICIAN QUESTION: {query}
-
-EXPERT ANSWER:"""
+    messages.append({"role": "user", "content": query})
+    return messages
 
 
-def call_llm(prompt, model_name=None):
+def call_llm(messages, model_name=None):
     if USE_AZURE:
         deployment = model_name or AZURE_LLM_DEPLOY
         resp = _azure_client.chat.completions.create(
             model=deployment,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             temperature=0.2,
-            max_tokens=1024,
+            max_tokens=1500,
         )
         return resp.choices[0].message.content
     else:
         response = ollama.chat(
             model=model_name or OLLAMA_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             stream=False,
         )
         return response["message"]["content"]
@@ -225,14 +232,15 @@ if db_ready:
 
         with st.chat_message("assistant"):
             with st.spinner("Searching work order history..."):
-                search_query = rewrite_query(user_input, st.session_state.messages[:-1])
+                history_so_far = st.session_state.messages[:-1]
+                search_query = rewrite_query(user_input, history_so_far)
                 items = retrieve_context(search_query, collection, top_k=top_k)
-                prompt = build_prompt(user_input, items)
+                messages = build_messages(user_input, items, history_so_far)
 
             try:
                 spinner_msg = "Generating answer..." if USE_AZURE else "Generating answer (this may take 20–60 seconds)..."
                 with st.spinner(spinner_msg):
-                    full_response = call_llm(prompt, model_name=model_choice)
+                    full_response = call_llm(messages, model_name=model_choice)
                 st.markdown(full_response)
             except Exception as e:
                 if USE_AZURE:
