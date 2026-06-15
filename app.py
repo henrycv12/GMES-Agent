@@ -17,11 +17,12 @@ OLLAMA_MODEL = "llama3.2:1b"
 EMBED_MODEL = "nomic-embed-text"
 TOP_K = 6
 
-# --- Embedding provider (mirrors ingest_excel.py) ---
-AZURE_KEY      = os.getenv("AZURE_OPENAI_API_KEY", "")
-AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-AZURE_DEPLOY   = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT", "embed-model")
-USE_AZURE      = bool(AZURE_KEY and AZURE_ENDPOINT)
+# --- Azure OpenAI (embeddings + LLM) ---
+AZURE_KEY        = os.getenv("AZURE_OPENAI_API_KEY", "")
+AZURE_ENDPOINT   = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+AZURE_DEPLOY     = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT", "embed-model")
+AZURE_LLM_DEPLOY = os.getenv("AZURE_OPENAI_LLM_DEPLOYMENT", "gpt-4o-mini")
+USE_AZURE        = bool(AZURE_KEY and AZURE_ENDPOINT)
 
 if USE_AZURE:
     from openai import AzureOpenAI
@@ -114,28 +115,48 @@ TECHNICIAN QUESTION: {query}
 EXPERT ANSWER:"""
 
 
-def call_ollama(prompt, model_name=OLLAMA_MODEL):
-    response = ollama.chat(
-        model=model_name,
-        messages=[{"role": "user", "content": prompt}],
-        stream=False,
-    )
-    return response["message"]["content"]
+def call_llm(prompt, model_name=None):
+    if USE_AZURE:
+        deployment = model_name or AZURE_LLM_DEPLOY
+        resp = _azure_client.chat.completions.create(
+            model=deployment,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=1024,
+        )
+        return resp.choices[0].message.content
+    else:
+        response = ollama.chat(
+            model=model_name or OLLAMA_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            stream=False,
+        )
+        return response["message"]["content"]
 
 
 # --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ Settings")
-    model_choice = st.selectbox(
-        "Ollama Model",
-        ["llama3.2:1b", "llama3.2:3b", "llama3", "mistral", "phi3:mini"],
-        index=0,
-        help="Must be pulled via: ollama pull <model>",
-    )
+    if USE_AZURE:
+        model_choice = st.selectbox(
+            "Azure LLM Model",
+            ["gpt-4o-mini", "gpt-4o"],
+            index=0,
+            help="Azure OpenAI deployment name",
+        )
+        st.caption("🟢 Azure OpenAI (embeddings + LLM)")
+    else:
+        model_choice = st.selectbox(
+            "Ollama Model",
+            ["llama3.2:1b", "llama3.2:3b", "llama3", "mistral", "phi3:mini"],
+            index=0,
+            help="Must be pulled via: ollama pull <model>",
+        )
+        st.caption("🟡 Ollama fallback (no .env found)")
     top_k = st.slider("Similar work orders (Top K)", min_value=3, max_value=15, value=6)
     st.divider()
     st.header("📂 Knowledge Base")
-    st.caption("Add work orders by dropping your Excel export in this folder and running:")
+    st.caption("Add work orders by dropping your Excel/CSV export in this folder and running:")
     st.code("python ingest_excel.py", language="bash")
     st.divider()
     if st.button("🗑️ Clear Chat History"):
@@ -181,15 +202,19 @@ if db_ready:
                 prompt = build_prompt(user_input, items)
 
             try:
-                with st.spinner("Generating answer (this may take 20–60 seconds)..."):
-                    full_response = call_ollama(prompt, model_name=model_choice)
+                spinner_msg = "Generating answer..." if USE_AZURE else "Generating answer (this may take 20–60 seconds)..."
+                with st.spinner(spinner_msg):
+                    full_response = call_llm(prompt, model_name=model_choice)
                 st.markdown(full_response)
             except Exception as e:
-                full_response = (
-                    f"❌ **Ollama error:** `{e}`\n\n"
-                    f"Make sure Ollama is running and `{model_choice}` is pulled:\n"
-                    f"```\nollama pull {model_choice}\n```"
-                )
+                if USE_AZURE:
+                    full_response = f"❌ **Azure OpenAI error:** `{e}`"
+                else:
+                    full_response = (
+                        f"❌ **Ollama error:** `{e}`\n\n"
+                        f"Make sure Ollama is running and `{model_choice}` is pulled:\n"
+                        f"```\nollama pull {model_choice}\n```"
+                    )
                 st.markdown(full_response)
 
             with st.expander("� Work orders referenced"):
