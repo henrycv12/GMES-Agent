@@ -59,6 +59,33 @@ def is_recency_query(query):
     return any(kw in q for kw in RECENCY_KEYWORDS)
 
 
+def rewrite_query(user_input, history):
+    if not USE_AZURE or len(history) < 2:
+        return user_input
+    last_turns = history[-4:]
+    context = ""
+    for msg in last_turns:
+        role = "User" if msg["role"] == "user" else "Assistant"
+        context += f"{role}: {msg['content'][:400]}\n"
+    rewrite_prompt = (
+        "You are a search query rewriter for a maintenance work order database.\n"
+        "Given the conversation history and the latest user message, rewrite the "
+        "latest message into a fully self-contained search query that resolves any "
+        "references like 'same machine', 'that equipment', 'last issue', 'same problem'.\n"
+        "Return ONLY the rewritten query, nothing else.\n\n"
+        f"Conversation history:\n{context}\n"
+        f"Latest message: {user_input}\n"
+        "Rewritten query:"
+    )
+    resp = _azure_client.chat.completions.create(
+        model=AZURE_LLM_DEPLOY,
+        messages=[{"role": "user", "content": rewrite_prompt}],
+        temperature=0,
+        max_tokens=100,
+    )
+    return resp.choices[0].message.content.strip()
+
+
 def embed_query(query):
     if USE_AZURE:
         resp = _azure_client.embeddings.create(model=AZURE_DEPLOY, input=[query])
@@ -198,7 +225,8 @@ if db_ready:
 
         with st.chat_message("assistant"):
             with st.spinner("Searching work order history..."):
-                items = retrieve_context(user_input, collection, top_k=top_k)
+                search_query = rewrite_query(user_input, st.session_state.messages[:-1])
+                items = retrieve_context(search_query, collection, top_k=top_k)
                 prompt = build_prompt(user_input, items)
 
             try:
