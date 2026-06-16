@@ -190,18 +190,21 @@ def call_llm(messages: list) -> str:
 # HTTP trigger: POST /api/analytics
 @app.route(route="analytics", methods=["POST"])
 def analytics_handler(req: func.HttpRequest) -> func.HttpResponse:
-    """Aggregate work orders by line, equipment, or failure type using client-side aggregation."""
+    """Aggregate work orders by line, equipment, or failure type using client-side aggregation.
+    Supports cross-line pattern queries with multi-field grouping and comparison."""
     try:
         body = req.get_json()
     except ValueError:
         return func.HttpResponse("Invalid JSON body", status_code=400)
 
     # Parameters
-    group_by = body.get("group_by", "line")  # line, equipment, maint_type, group
+    group_by = body.get("group_by", "line")  # Can be string or array for multi-field grouping
     date_from = body.get("date_from")  # ISO date string, e.g., "2026-01-01"
     date_to = body.get("date_to")  # ISO date string, e.g., "2026-03-31"
     top_n = body.get("top_n", 10)
     filter_text = body.get("filter", "")  # optional text filter (e.g., "diverter jam"
+    compare_lines = body.get("compare_lines", [])  # optional: compare specific lines
+    time_group = body.get("time_group", None)  # optional: "week", "month", "quarter" for time-based aggregation
 
     # Build filter for date range
     filters = []
@@ -209,25 +212,52 @@ def analytics_handler(req: func.HttpRequest) -> func.HttpResponse:
         filters.append(f"date_ts ge {int(pd.Timestamp(date_from).timestamp())}")
     if date_to:
         filters.append(f"date_ts le {int(pd.Timestamp(date_to).timestamp())}")
+    if compare_lines:
+        line_filter = " or ".join([f"line eq '{line}'" for line in compare_lines])
+        filters.append(f"({line_filter})")
     
     filter_query = " and ".join(filters) if filters else None
 
     # Use client-side aggregation (retrieve documents and count)
     try:
-        # Fetch up to 1000 documents for aggregation
+        # Fetch up to 2000 documents for cross-line pattern queries
         results = _search_client.search(
             search_text=filter_text if filter_text else "*",
             filter=filter_query,
-            top=1000,
-            select=["wo_no", "date", "equipment", "line", "maint_type", "technician", "group"],
+            top=2000,
+            select=["wo_no", "date", "date_ts", "equipment", "line", "maint_type", "technician", "group"],
         )
+        
+        # Normalize group_by to array
+        if isinstance(group_by, str):
+            group_by = [group_by]
         
         # Aggregate on client side
         counts = {}
         for r in results:
-            value = r.get(group_by, "Unknown")
-            if value:
-                counts[value] = counts.get(value, 0) + 1
+            # Build composite key for multi-field grouping
+            key_parts = []
+            for field in group_by:
+                value = r.get(field, "Unknown")
+                key_parts.append(str(value) if value else "Unknown")
+            key = "|".join(key_parts)
+            
+            # Add time grouping if specified
+            if time_group:
+                date_ts = r.get("date_ts", 0)
+                if date_ts:
+                    dt = pd.to_datetime(date_ts, unit='s')
+                    if time_group == "week":
+                        time_key = dt.strftime("%Y-W%W")
+                    elif time_group == "month":
+                        time_key = dt.strftime("%Y-%m")
+                    elif time_group == "quarter":
+                        time_key = f"{dt.year}-Q{(dt.month-1)//3 + 1}"
+                    else:
+                        time_key = dt.strftime("%Y-%m-%d")
+                    key = f"{time_key}|{key}"
+            
+            counts[key] = counts.get(key, 0) + 1
         
         # Convert to list and sort by count descending
         facet_results = [
@@ -235,13 +265,30 @@ def analytics_handler(req: func.HttpRequest) -> func.HttpResponse:
             for k, v in sorted(counts.items(), key=lambda x: x[1], reverse=True)
         ][:top_n]
         
+        # Parse composite keys for multi-field results
+        parsed_results = []
+        for item in facet_results:
+            parts = item["value"].split("|")
+            if time_group:
+                result = {"time_period": parts[0]}
+                for i, field in enumerate(group_by):
+                    result[field] = parts[i + 1] if i + 1 < len(parts) else "Unknown"
+            else:
+                result = {}
+                for i, field in enumerate(group_by):
+                    result[field] = parts[i] if i < len(parts) else "Unknown"
+            result["count"] = item["count"]
+            parsed_results.append(result)
+        
         return func.HttpResponse(
             json.dumps({
                 "group_by": group_by,
                 "date_from": date_from,
                 "date_to": date_to,
                 "filter": filter_text,
-                "results": facet_results
+                "compare_lines": compare_lines,
+                "time_group": time_group,
+                "results": parsed_results
             }, ensure_ascii=False),
             mimetype="application/json",
             status_code=200,

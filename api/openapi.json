@@ -153,9 +153,21 @@
       "type": "object",
       "properties": {
         "group_by": {
-          "type": "string",
-          "description": "Field to group by (line, equipment, maint_type, group)",
-          "enum": ["line", "equipment", "maint_type", "group"],
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Field to group by (line, equipment, maint_type, group)",
+              "enum": ["line", "equipment", "maint_type", "group"]
+            },
+            {
+              "type": "array",
+              "description": "Multiple fields to group by for cross-line pattern queries",
+              "items": {
+                "type": "string",
+                "enum": ["line", "equipment", "maint_type", "group"]
+              }
+            }
+          ],
           "default": "line"
         },
         "date_from": {
@@ -174,6 +186,18 @@
         "filter": {
           "type": "string",
           "description": "Optional text filter to apply (e.g., diverter jam)"
+        },
+        "compare_lines": {
+          "type": "array",
+          "description": "Optional: compare specific lines (e.g., ['EPS Line 1', 'Press Line 1'])",
+          "items": {
+            "type": "string"
+          }
+        },
+        "time_group": {
+          "type": "string",
+          "description": "Optional: time-based aggregation (week, month, quarter)",
+          "enum": ["week", "month", "quarter"]
         }
       }
     },
@@ -181,8 +205,8 @@
       "type": "object",
       "properties": {
         "group_by": {
-          "type": "string",
-          "description": "Field that was grouped by"
+          "type": "array",
+          "description": "Fields that were grouped by"
         },
         "date_from": {
           "type": "string",
@@ -196,19 +220,43 @@
           "type": "string",
           "description": "Text filter used"
         },
+        "compare_lines": {
+          "type": "array",
+          "description": "Lines that were compared"
+        },
+        "time_group": {
+          "type": "string",
+          "description": "Time grouping used (week, month, quarter)"
+        },
         "results": {
           "type": "array",
           "description": "Aggregated results with counts",
           "items": {
             "type": "object",
             "properties": {
-              "value": {
+              "time_period": {
                 "type": "string",
-                "description": "Field value (e.g., line name, equipment name)"
+                "description": "Time period (if time_group was specified)"
+              },
+              "line": {
+                "type": "string",
+                "description": "Line name (if grouped by line)"
+              },
+              "equipment": {
+                "type": "string",
+                "description": "Equipment name (if grouped by equipment)"
+              },
+              "maint_type": {
+                "type": "string",
+                "description": "Maintenance type (if grouped by maint_type)"
+              },
+              "group": {
+                "type": "string",
+                "description": "Group name (if grouped by group)"
               },
               "count": {
                 "type": "integer",
-                "description": "Number of work orders with this value"
+                "description": "Number of work orders"
               }
             }
           }
