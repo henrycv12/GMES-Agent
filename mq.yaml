@@ -1,0 +1,44 @@
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    triggerQueries:
+      - maintenance
+      - failure
+      - repair
+      - conveyor
+      - motor
+      - equipment
+      - work order
+      - issue
+      - breakdown
+      - corrective
+      - robot
+      - machine
+      - who worked on
+      - who last worked
+      - last technician
+      - when was it fixed
+      - what happened to
+
+  actions:
+    - kind: InvokeFlowAction
+      id: invokeFlowAction_K1nVUz
+      input:
+        binding:
+          text: =System.Activity.Text
+          text_1: =System.Conversation.Id
+
+      output:
+        binding:
+          answer: Topic.answer
+
+      flowId: c4f53174-9a69-f111-ab0c-6045bd1e831e
+
+    - kind: SendActivity
+      id: sendActivity_ZaMeIq
+      activity: "{Topic.answer}"
+
+inputType: {}
+outputType: {}

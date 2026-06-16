@@ -1,0 +1,32 @@
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnUnknownIntent
+  id: main
+  actions:
+    - kind: ConditionGroup
+      id: conditionGroup_LktzXw
+      conditions:
+        - id: conditionItem_tlGIVo
+          condition: =System.FallbackCount < 3
+          actions:
+            - kind: InvokeFlowAction
+              id: invokeFlowAction_1YKQhY
+              input:
+                binding:
+                  text: =System.Activity.Text
+                  text_1: =System.Conversation.Id
+
+              output:
+                binding:
+                  answer: Topic.answer
+
+              flowId: c4f53174-9a69-f111-ab0c-6045bd1e831e
+
+            - kind: SendActivity
+              id: sendActivity_Ga99ju
+              activity: "{Topic.answer}"
+
+      elseActions:
+        - kind: BeginDialog
+          id: 5aXj5M
+          dialog: cr981_GMESMaintenanceAgent.topic.Escalate

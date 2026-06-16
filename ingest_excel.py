@@ -1,8 +1,10 @@
+import base64
 import glob
 import os
 import pandas as pd
 import chromadb
 from dotenv import load_dotenv
+from azure.core.credentials import AzureKeyCredential
 
 load_dotenv()
 
@@ -28,6 +30,20 @@ if USE_AZURE:
     )
 else:
     import ollama
+
+# --- Auto-detect Azure AI Search from .env (optional dual-write) ---
+SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
+SEARCH_KEY      = os.getenv("AZURE_SEARCH_KEY", "")
+SEARCH_INDEX    = os.getenv("AZURE_SEARCH_INDEX", "work-orders")
+USE_SEARCH      = bool(SEARCH_ENDPOINT and SEARCH_KEY)
+
+if USE_SEARCH:
+    from azure.search.documents import SearchClient
+    _search_client = SearchClient(
+        endpoint=SEARCH_ENDPOINT,
+        index_name=SEARCH_INDEX,
+        credential=AzureKeyCredential(SEARCH_KEY),
+    )
 
 # --- Column mapping (exact names from your EMS export) ---
 COL_NO              = "No"
@@ -124,6 +140,7 @@ def ingest_excel():
                 "line": safe(row, COL_LINE),
                 "group": safe(row, COL_GROUP),
                 "maint_type": safe(row, COL_TYPE),
+                "technician": safe(row, COL_TECHNICIAN),
             })
 
     if not all_records:
@@ -170,6 +187,7 @@ def ingest_excel():
         "line":       r["line"],
         "group":      r["group"],
         "maint_type": r["maint_type"],
+        "technician": r["technician"],
     } for r in new_records]
 
     embeddings = []
@@ -204,8 +222,36 @@ def ingest_excel():
         print(f"  Stored {end}/{total} records...")
 
     total_now = len(existing_ids) + total
-    print(f"\n✅ Ingestion complete — {total} new records added ({total_now:,} total indexed).")
-    print("   Restart 'streamlit run app.py' to use the updated knowledge base.")
+    print(f"\n✅ ChromaDB ingestion complete — {total} new records added ({total_now:,} total indexed).")
+
+    # --- Dual-write to Azure AI Search (if configured) ---
+    if USE_SEARCH:
+        print(f"\n  Dual-writing {total} new records to Azure AI Search index '{SEARCH_INDEX}'...")
+        search_docs = []
+        for r in new_records:
+            search_docs.append({
+                "id":         base64.urlsafe_b64encode(r["chunk_id"].encode()).decode().rstrip("="),
+                "content":    r["text"],
+                "source":     r["source"],
+                "wo_no":      r["wo_no"],
+                "date":       r["date"],
+                "date_ts":    int(r["date_ts"]),
+                "equipment":  r["equipment"],
+                "equip_id":   r["equip_id"],
+                "line":       r["line"],
+                "group":      r["group"],
+                "maint_type": r["maint_type"],
+                "technician": r["technician"],
+            })
+        for start in range(0, len(search_docs), BATCH_SIZE):
+            end = min(start + BATCH_SIZE, len(search_docs))
+            _search_client.upload_documents(documents=search_docs[start:end])
+            print(f"  Azure AI Search: stored {end}/{total}...")
+        print(f"  ✅ Azure AI Search sync complete.")
+    else:
+        print("   (Azure AI Search not configured — skipping. Add AZURE_SEARCH_ENDPOINT + AZURE_SEARCH_KEY to .env to enable.)")
+
+    print("\n   Restart 'streamlit run app.py' to use the updated knowledge base.")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,120 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "GMES Agent API",
+    "description": "Maintenance work order AI assistant backed by Azure AI Search and GPT-4o",
+    "version": "1.0"
+  },
+  "host": "gmes-agent-api.azurewebsites.net",
+  "basePath": "/api",
+  "schemes": ["https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "paths": {
+    "/query": {
+      "post": {
+        "summary": "Query maintenance work orders",
+        "description": "Send a natural-language maintenance question and receive an AI-generated answer grounded in historical work orders",
+        "operationId": "QueryWorkOrders",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/QueryRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AI-generated answer with source work orders",
+            "schema": {
+              "$ref": "#/definitions/QueryResponse"
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "HistoryMessage": {
+      "type": "object",
+      "required": ["role", "content"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "Message role",
+          "enum": ["user", "assistant"]
+        },
+        "content": {
+          "type": "string",
+          "description": "Message text"
+        }
+      }
+    },
+    "QueryRequest": {
+      "type": "object",
+      "required": ["question"],
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "The maintenance question to answer"
+        },
+        "history": {
+          "type": "string",
+          "description": "Conversation ID or JSON history string for multi-turn context"
+        }
+      }
+    },
+    "WorkOrder": {
+      "type": "object",
+      "properties": {
+        "wo_no":      { "type": "string", "description": "Work order number" },
+        "date":       { "type": "string", "description": "Date of work order" },
+        "equipment":  { "type": "string", "description": "Equipment name" },
+        "maint_type": { "type": "string", "description": "Maintenance type" },
+        "line":       { "type": "string", "description": "Production line" },
+        "ref":        { "type": "string", "description": "Full reference string" }
+      }
+    },
+    "QueryResponse": {
+      "type": "object",
+      "properties": {
+        "answer": {
+          "type": "string",
+          "description": "AI-generated answer"
+        },
+        "work_orders": {
+          "type": "array",
+          "description": "Source work orders used to generate the answer",
+          "items": {
+            "$ref": "#/definitions/WorkOrder"
+          }
+        },
+        "query_used": {
+          "type": "string",
+          "description": "The rewritten search query that was used"
+        }
+      }
+    }
+  },
+  "securityDefinitions": {
+    "api_key": {
+      "type": "apiKey",
+      "in": "query",
+      "name": "code"
+    }
+  }
+}

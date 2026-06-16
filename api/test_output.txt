@@ -1,0 +1,38 @@
+=== TURN 1 ===
+Q: What failures have we had with the P4 Belt Conveyor?
+Query used: What failures have we had with the P4 Belt Conveyor?
+WOs: 15
+Answer (first 300): The P4 Belt Conveyor (USTN-01ECON028) has experienced a variety of failures over the years. Below is a summary of the types of failures, their causes, and resolutions based on historical work orders:
+
+---
+
+### **1. Belt Issues**
+#### **Failure Symptoms:**
+- **Not Rotate:** Belt slipping or stopping.
+
+=== TURN 2 ===
+Q: What about the same machine but only breakdown cases?
+Rewritten to: What breakdown cases have occurred with the P4 Belt Conveyor (USTN-01ECON028)?
+WOs: 15
+Answer (first 300): For the P4 Belt Conveyor (USTN-01ECON028), here is a breakdown-specific summary of failures, causes, and resolutions based on historical work orders:
+
+---
+
+### **Breakdown Cases Summary**
+The following breakdown cases have been recorded for the P4 Belt Conveyor:
+
+---
+
+### **1. Belt Failures**
+#### *
+
+=== TURN 3 ===
+Q: How long did that usually take to fix?
+Rewritten to: "How long did it usually take to fix breakdown cases for the P4 Belt Conveyor (USTN-01ECON028)?"
+WOs: 0
+Answer (first 300): Based on historical work orders for breakdown cases involving the P4 Belt Conveyor (USTN-01ECON028), the average time to fix issues varied depending on the type of failure. Below is a breakdown of repair durations for each type of failure:
+
+---
+
+### **1. Belt Failures**
+- **WO #6861 (2022-02-12):** 

@@ -1,0 +1,31 @@
+{
+  "properties": {
+    "connectionParameters": {
+      "api_key": {
+        "type": "securestring",
+        "uiDefinition": {
+          "displayName": "API Key (Function host key)",
+          "description": "The Azure Functions host key for the GMES Agent API",
+          "tooltip": "Paste the Azure Functions host key here",
+          "constraints": {
+            "required": "true"
+          }
+        }
+      }
+    },
+    "iconBrandColor": "#0078D4",
+    "capabilities": [],
+    "policyTemplateInstances": [
+      {
+        "templateId": "setheader",
+        "title": "Set API key as query param",
+        "parameters": {
+          "x-ms-apimTemplateParameter.name": "code",
+          "x-ms-apimTemplateParameter.value": "@connectionParameters('api_key')",
+          "x-ms-apimTemplateParameter.existsAction": "override",
+          "x-ms-apimTemplate-policySection": "Request"
+        }
+      }
+    ]
+  }
+}

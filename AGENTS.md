@@ -54,6 +54,21 @@ User query (Streamlit)
 - `USE_AZURE` — auto-set from `.env`; switches embed provider
 - Sort: `Maint. Plan Date` descending before embedding
 
+## Code navigation
+This project has `.codegraph/` initialized (100 nodes, 136 edges across 3 Python files).
+**Always use CodeGraph MCP tools instead of grep/read loops** — see `.devin/rules/codegraph.md`.
+
+| Key symbols | Kind | File |
+|---|---|---|
+| `embed_query` | function | `app.py` |
+| `retrieve_context` | function | `app.py` |
+| `build_messages` | function | `app.py` |
+| `call_llm` | function | `app.py` |
+| `rewrite_query` | function | `app.py` |
+| `ingest_excel` | function | `ingest_excel.py` |
+| `row_to_text` | function | `ingest_excel.py` |
+| `safe` | function | `ingest_excel.py` |
+
 ## Deployment target
 Local Windows machine (PE team workstation). Requires internet for Azure embed API calls.
 Run with:
