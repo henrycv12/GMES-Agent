@@ -190,7 +190,7 @@ def call_llm(messages: list) -> str:
 # HTTP trigger: POST /api/analytics
 @app.route(route="analytics", methods=["POST"])
 def analytics_handler(req: func.HttpRequest) -> func.HttpResponse:
-    """Aggregate work orders by line, equipment, or failure type using Azure AI Search facets."""
+    """Aggregate work orders by line, equipment, or failure type using client-side aggregation."""
     try:
         body = req.get_json()
     except ValueError:
@@ -201,7 +201,7 @@ def analytics_handler(req: func.HttpRequest) -> func.HttpResponse:
     date_from = body.get("date_from")  # ISO date string, e.g., "2026-01-01"
     date_to = body.get("date_to")  # ISO date string, e.g., "2026-03-31"
     top_n = body.get("top_n", 10)
-    filter_text = body.get("filter", "")  # optional text filter (e.g., "diverter jam")
+    filter_text = body.get("filter", "")  # optional text filter (e.g., "diverter jam"
 
     # Build filter for date range
     filters = []
@@ -209,34 +209,31 @@ def analytics_handler(req: func.HttpRequest) -> func.HttpResponse:
         filters.append(f"date_ts ge {int(pd.Timestamp(date_from).timestamp())}")
     if date_to:
         filters.append(f"date_ts le {int(pd.Timestamp(date_to).timestamp())}")
-    if filter_text:
-        filters.append(f"content/search.in('{filter_text}', 'simple')")
     
     filter_query = " and ".join(filters) if filters else None
 
-    # Use Azure AI Search facets for aggregation
+    # Use client-side aggregation (retrieve documents and count)
     try:
+        # Fetch up to 1000 documents for aggregation
         results = _search_client.search(
-            search_text="*" if not filter_text else filter_text,
+            search_text=filter_text if filter_text else "*",
             filter=filter_query,
-            facets=[f"{group_by},count:{top_n}"],
-            top=0,  # We only need facet counts, not documents
-            select=["wo_no", "date", "equipment", "line", "maint_type", "technician"],
+            top=1000,
+            select=["wo_no", "date", "equipment", "line", "maint_type", "technician", "group"],
         )
         
-        # Extract facet results
-        facet_results = []
-        for result in results:
-            if result.get_facets():
-                facet_data = result.get_facets().get(group_by, [])
-                for facet in facet_data:
-                    facet_results.append({
-                        "value": facet.value,
-                        "count": facet.count
-                    })
+        # Aggregate on client side
+        counts = {}
+        for r in results:
+            value = r.get(group_by, "Unknown")
+            if value:
+                counts[value] = counts.get(value, 0) + 1
         
-        # Sort by count descending
-        facet_results = sorted(facet_results, key=lambda x: x["count"], reverse=True)[:top_n]
+        # Convert to list and sort by count descending
+        facet_results = [
+            {"value": k, "count": v}
+            for k, v in sorted(counts.items(), key=lambda x: x[1], reverse=True)
+        ][:top_n]
         
         return func.HttpResponse(
             json.dumps({
