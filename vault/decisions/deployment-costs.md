@@ -30,19 +30,20 @@ The GMES Agent core RAG system is complete and operational (Azure OpenAI, AI Sea
 
 ## 2. Create PM Task Output Action
 
-**Description**: One-click handoff from the bot to create a preventive maintenance task in the PM system.
+**Description**: Generate a PM task or export a list/file based on the current work order database to facilitate preventive maintenance planning.
 
 **Technical Approach**:
-- Power Automate Premium flow to call PM system API
-- Action button in Copilot Studio response
+- Power Automate flow to query work order database and generate PM task record
+- Export formatted list (Excel/CSV) of recommended PM tasks based on failure patterns
+- Action button in Copilot Studio response to trigger the export
 
 **Costs**:
 - **Power Automate Premium**: ~$15-20/user/month (per seat license)
-- Required for custom connectors and advanced flow actions
+- Required for advanced flow actions and file generation
 
 **Tools Needed**:
 - Power Automate Premium license
-- PM system API documentation and access
+- Access to work order database (Azure AI Search or Azure SQL)
 - Copilot Studio action button configuration
 
 **Priority**: Low — nice-to-have, not critical for initial deployment
