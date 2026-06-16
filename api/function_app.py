@@ -3,6 +3,7 @@ import logging
 import os
 import re
 
+import pandas as pd
 import azure.functions as func
 from azure.core.credentials import AzureKeyCredential
 from azure.core.exceptions import ResourceNotFoundError
@@ -184,6 +185,78 @@ def call_llm(messages: list) -> str:
     )
     return resp.choices[0].message.content
 
+
+# ---------------------------------------------------------------------------
+# HTTP trigger: POST /api/analytics
+@app.route(route="analytics", methods=["POST"])
+def analytics_handler(req: func.HttpRequest) -> func.HttpResponse:
+    """Aggregate work orders by line, equipment, or failure type using Azure AI Search facets."""
+    try:
+        body = req.get_json()
+    except ValueError:
+        return func.HttpResponse("Invalid JSON body", status_code=400)
+
+    # Parameters
+    group_by = body.get("group_by", "line")  # line, equipment, maint_type, group
+    date_from = body.get("date_from")  # ISO date string, e.g., "2026-01-01"
+    date_to = body.get("date_to")  # ISO date string, e.g., "2026-03-31"
+    top_n = body.get("top_n", 10)
+    filter_text = body.get("filter", "")  # optional text filter (e.g., "diverter jam")
+
+    # Build filter for date range
+    filters = []
+    if date_from:
+        filters.append(f"date_ts ge {int(pd.Timestamp(date_from).timestamp())}")
+    if date_to:
+        filters.append(f"date_ts le {int(pd.Timestamp(date_to).timestamp())}")
+    if filter_text:
+        filters.append(f"content/search.in('{filter_text}', 'simple')")
+    
+    filter_query = " and ".join(filters) if filters else None
+
+    # Use Azure AI Search facets for aggregation
+    try:
+        results = _search_client.search(
+            search_text="*" if not filter_text else filter_text,
+            filter=filter_query,
+            facets=[f"{group_by},count:{top_n}"],
+            top=0,  # We only need facet counts, not documents
+            select=["wo_no", "date", "equipment", "line", "maint_type", "technician"],
+        )
+        
+        # Extract facet results
+        facet_results = []
+        for result in results:
+            if result.get_facets():
+                facet_data = result.get_facets().get(group_by, [])
+                for facet in facet_data:
+                    facet_results.append({
+                        "value": facet.value,
+                        "count": facet.count
+                    })
+        
+        # Sort by count descending
+        facet_results = sorted(facet_results, key=lambda x: x["count"], reverse=True)[:top_n]
+        
+        return func.HttpResponse(
+            json.dumps({
+                "group_by": group_by,
+                "date_from": date_from,
+                "date_to": date_to,
+                "filter": filter_text,
+                "results": facet_results
+            }, ensure_ascii=False),
+            mimetype="application/json",
+            status_code=200,
+        )
+        
+    except Exception as exc:
+        logging.exception("analytics_handler error")
+        return func.HttpResponse(
+            json.dumps({"error": str(exc)}),
+            mimetype="application/json",
+            status_code=500,
+        )
 
 # ---------------------------------------------------------------------------
 # HTTP trigger: POST /api/query

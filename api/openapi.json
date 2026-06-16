@@ -46,6 +46,42 @@
           }
         ]
       }
+    },
+    "/analytics": {
+      "post": {
+        "summary": "Aggregate work orders by field",
+        "description": "Get aggregated counts of work orders grouped by line, equipment, maintenance type, or group with optional date range and text filtering",
+        "operationId": "GetAnalytics",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/AnalyticsRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated analytics results",
+            "schema": {
+              "$ref": "#/definitions/AnalyticsResponse"
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
     }
   },
   "definitions": {
@@ -110,6 +146,72 @@
         "card": {
           "type": "string",
           "description": "Adaptive Card JSON string for cited work orders"
+        }
+      }
+    },
+    "AnalyticsRequest": {
+      "type": "object",
+      "properties": {
+        "group_by": {
+          "type": "string",
+          "description": "Field to group by (line, equipment, maint_type, group)",
+          "enum": ["line", "equipment", "maint_type", "group"],
+          "default": "line"
+        },
+        "date_from": {
+          "type": "string",
+          "description": "Start date in ISO format (e.g., 2026-01-01)"
+        },
+        "date_to": {
+          "type": "string",
+          "description": "End date in ISO format (e.g., 2026-03-31)"
+        },
+        "top_n": {
+          "type": "integer",
+          "description": "Number of top results to return",
+          "default": 10
+        },
+        "filter": {
+          "type": "string",
+          "description": "Optional text filter to apply (e.g., diverter jam)"
+        }
+      }
+    },
+    "AnalyticsResponse": {
+      "type": "object",
+      "properties": {
+        "group_by": {
+          "type": "string",
+          "description": "Field that was grouped by"
+        },
+        "date_from": {
+          "type": "string",
+          "description": "Start date used in filter"
+        },
+        "date_to": {
+          "type": "string",
+          "description": "End date used in filter"
+        },
+        "filter": {
+          "type": "string",
+          "description": "Text filter used"
+        },
+        "results": {
+          "type": "array",
+          "description": "Aggregated results with counts",
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "description": "Field value (e.g., line name, equipment name)"
+              },
+              "count": {
+                "type": "integer",
+                "description": "Number of work orders with this value"
+              }
+            }
+          }
         }
       }
     }
