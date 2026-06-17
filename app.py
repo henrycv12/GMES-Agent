@@ -3,6 +3,7 @@ import os
 import sys
 import streamlit as st
 import chromadb
+import pandas as pd
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 
@@ -37,14 +38,18 @@ RECENCY_KEYWORDS = {
 
 st.set_page_config(
     page_title="GMES Agent — Maintenance Agent",
-    page_icon="�",
+    page_icon="🔧",
     layout="wide",
 )
 
-st.title("� GMES Agent — Maintenance Agent")
+st.title("🔧 GMES Agent — Maintenance Agent")
 st.caption("AI-powered troubleshooting from your work order history")
 st.divider()
 
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
 
 @st.cache_resource(show_spinner="Loading work order knowledge base...")
 def load_collection():
@@ -52,13 +57,32 @@ def load_collection():
     return client.get_collection(WO_COLLECTION)
 
 
+@st.cache_data(show_spinner="Loading analytics data...", ttl=300)
+def load_metadata_df(_collection) -> pd.DataFrame:
+    """Fetch all metadata from ChromaDB and return as a DataFrame."""
+    total = _collection.count()
+    all_meta = []
+    batch = 1000
+    for offset in range(0, total, batch):
+        res = _collection.get(limit=batch, offset=offset, include=["metadatas"])
+        all_meta.extend(res["metadatas"])
+    df = pd.DataFrame(all_meta)
+    if "date_ts" in df.columns:
+        df["date_parsed"] = pd.to_datetime(df["date_ts"], unit="s", errors="coerce")
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Chat helpers
+# ---------------------------------------------------------------------------
+
 def is_recency_query(query):
     q = query.lower()
     return any(kw in q for kw in RECENCY_KEYWORDS)
 
 
 def rewrite_query(user_input, history):
-    if not USE_AZURE or len(history) < 2:
+    if len(history) < 2:
         return user_input
     last_turns = history[-4:]
     context = ""
@@ -91,7 +115,6 @@ def embed_query(query):
 
 def retrieve_context(query, collection, top_k=TOP_K):
     embedding = embed_query(query)
-    # Fetch more candidates when recency is needed so we can re-rank
     fetch_k = top_k * 3 if is_recency_query(query) else top_k
     results = collection.query(
         query_embeddings=[embedding],
@@ -149,18 +172,11 @@ def build_messages(query, items, history):
     context = ""
     for item in items:
         context += f"\n--- {item['ref']} ---\n{item['text']}\n"
-
-    system_prompt = (
-        f"{SYSTEM_BASE}\n\n"
-        f"RELEVANT WORK ORDERS FOR THIS QUERY:\n{context}"
-    )
-
+    system_prompt = f"{SYSTEM_BASE}\n\nRELEVANT WORK ORDERS FOR THIS QUERY:\n{context}"
     messages = [{"role": "system", "content": system_prompt}]
-
     for msg in history:
         if msg["role"] in ("user", "assistant"):
             messages.append({"role": msg["role"], "content": msg["content"]})
-
     messages.append({"role": "user", "content": query})
     return messages
 
@@ -175,7 +191,10 @@ def call_llm(messages, model_name=None):
     return resp.choices[0].message.content
 
 
-# --- Sidebar ---
+# ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
+
 with st.sidebar:
     st.header("⚙️ Settings")
     model_choice = st.selectbox(
@@ -195,7 +214,10 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# --- Load collection ---
+# ---------------------------------------------------------------------------
+# Load collection
+# ---------------------------------------------------------------------------
+
 try:
     collection = load_collection()
     count = collection.count()
@@ -203,48 +225,158 @@ try:
     db_ready = True
 except Exception as e:
     db_ready = False
+    collection = None
     st.error(
         "⚠️ **No work orders indexed yet.**\n\n"
         "Drop your Excel file in this folder and run:\n```\npython ingest_excel.py\n```\n\n"
         f"Error: `{e}`"
     )
 
-# --- Chat history ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# ---------------------------------------------------------------------------
+# Tabs
+# ---------------------------------------------------------------------------
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg["role"] == "assistant" and msg.get("items"):
-            with st.expander(f"📋 {len(msg['items'])} work orders referenced"):
-                render_wo_cards(msg["items"])
+tab_chat, tab_analytics = st.tabs(["💬 Chat", "📊 Analytics"])
 
-# --- Chat input ---
-if db_ready:
-    if user_input := st.chat_input("Describe the equipment issue or ask a maintenance question..."):
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.markdown(user_input)
+# ---------------------------------------------------------------------------
+# Tab 1 — Chat
+# ---------------------------------------------------------------------------
 
-        with st.chat_message("assistant"):
-            with st.spinner("Searching work order history..."):
-                history_so_far = st.session_state.messages[:-1]
-                search_query = rewrite_query(user_input, history_so_far)
-                items = retrieve_context(search_query, collection, top_k=top_k)
-                messages = build_messages(user_input, items, history_so_far)
+with tab_chat:
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-            try:
-                with st.spinner("Generating answer..."):
-                    full_response = call_llm(messages, model_name=model_choice)
-                st.markdown(full_response)
-            except Exception as e:
-                full_response = f"❌ **Azure OpenAI error:** `{e}`"
-                st.markdown(full_response)
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg["role"] == "assistant" and msg.get("items"):
+                with st.expander(f"📋 {len(msg['items'])} work orders referenced"):
+                    render_wo_cards(msg["items"])
 
-            with st.expander(f"📋 {len(items)} work orders referenced"):
-                render_wo_cards(items)
+    if db_ready:
+        if user_input := st.chat_input("Describe the equipment issue or ask a maintenance question..."):
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            with st.chat_message("user"):
+                st.markdown(user_input)
 
-        st.session_state.messages.append(
-            {"role": "assistant", "content": full_response, "items": items}
+            with st.chat_message("assistant"):
+                with st.spinner("Searching work order history..."):
+                    history_so_far = st.session_state.messages[:-1]
+                    search_query = rewrite_query(user_input, history_so_far)
+                    items = retrieve_context(search_query, collection, top_k=top_k)
+                    messages = build_messages(user_input, items, history_so_far)
+
+                try:
+                    with st.spinner("Generating answer..."):
+                        full_response = call_llm(messages, model_name=model_choice)
+                    st.markdown(full_response)
+                except Exception as e:
+                    full_response = f"❌ **Azure OpenAI error:** `{e}`"
+                    st.markdown(full_response)
+
+                with st.expander(f"📋 {len(items)} work orders referenced"):
+                    render_wo_cards(items)
+
+            st.session_state.messages.append(
+                {"role": "assistant", "content": full_response, "items": items}
+            )
+
+# ---------------------------------------------------------------------------
+# Tab 2 — Analytics
+# ---------------------------------------------------------------------------
+
+with tab_analytics:
+    if not db_ready:
+        st.warning("No work orders indexed yet. Run `python ingest_excel.py` first.")
+        st.stop()
+
+    df_full = load_metadata_df(collection)
+
+    GROUP_LABELS = {
+        "line":       "Line",
+        "group":      "Shop / Group",
+        "equipment":  "Equipment",
+        "maint_type": "Maintenance Type",
+    }
+
+    # --- Controls ---
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    with col1:
+        group_field = st.selectbox(
+            "Group by",
+            options=list(GROUP_LABELS.keys()),
+            format_func=lambda k: GROUP_LABELS[k],
         )
+    with col2:
+        top_n = st.slider("Top N", min_value=3, max_value=25, value=10)
+    with col3:
+        date_min = df_full["date_parsed"].min().date() if "date_parsed" in df_full.columns else None
+        date_max = df_full["date_parsed"].max().date() if "date_parsed" in df_full.columns else None
+        date_from = st.date_input("From", value=date_min, min_value=date_min, max_value=date_max)
+    with col4:
+        date_to = st.date_input("To", value=date_max, min_value=date_min, max_value=date_max)
+
+    keyword = st.text_input(
+        "Keyword filter (optional)",
+        placeholder="e.g. diverter jam, vacuum, motor...",
+        help="Filters rows where any text field contains this word",
+    )
+
+    st.divider()
+
+    # --- Apply filters ---
+    df = df_full.copy()
+    if "date_parsed" in df.columns:
+        df = df[df["date_parsed"].dt.date.between(date_from, date_to)]
+    if keyword.strip():
+        kw = keyword.strip().lower()
+        text_cols = [c for c in ["equipment", "maint_type", "line", "group"] if c in df.columns]
+        mask = df[text_cols].apply(lambda col: col.str.lower().str.contains(kw, na=False)).any(axis=1)
+        df = df[mask]
+
+    if df.empty:
+        st.info("No work orders match the current filters.")
+        st.stop()
+
+    # --- Aggregate ---
+    if group_field not in df.columns:
+        st.error(f"Field '{group_field}' not found in indexed data.")
+        st.stop()
+
+    counts = (
+        df[group_field]
+        .fillna("Unknown")
+        .value_counts()
+        .head(top_n)
+        .rename_axis(GROUP_LABELS[group_field])
+        .rename("Work Orders")
+    )
+
+    # --- Chart ---
+    st.subheader(f"Top {top_n} by {GROUP_LABELS[group_field]}")
+    st.caption(f"{len(df):,} work orders in selected range · {date_from} → {date_to}"
+               + (f" · keyword: '{keyword}'" if keyword.strip() else ""))
+    st.bar_chart(counts)
+
+    # --- Table ---
+    with st.expander("📋 Full table", expanded=False):
+        st.dataframe(
+            counts.reset_index().rename(columns={"index": GROUP_LABELS[group_field]}),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # --- Trend over time (monthly) ---
+    if "date_parsed" in df.columns and group_field in df.columns:
+        st.divider()
+        st.subheader(f"Monthly trend — top 5 {GROUP_LABELS[group_field]}")
+        top5 = counts.head(5).index.tolist()
+        trend_df = df[df[group_field].isin(top5)].copy()
+        trend_df["month"] = trend_df["date_parsed"].dt.to_period("M").dt.to_timestamp()
+        pivot = (
+            trend_df.groupby(["month", group_field])
+            .size()
+            .unstack(fill_value=0)
+            .sort_index()
+        )
+        st.line_chart(pivot)
