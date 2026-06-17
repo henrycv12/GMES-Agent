@@ -11,25 +11,23 @@ load_dotenv()
 EXCEL_FOLDER = "."           # scans all .xlsx files in this folder
 CHROMA_DIR = "./chroma_db"
 WO_COLLECTION = "work_orders"
-EMBED_MODEL_OLLAMA = "nomic-embed-text"
 EMBED_BATCH = 500
 BATCH_SIZE = 500
 
-# --- Auto-detect embedding provider from .env ---
+from openai import AzureOpenAI
+
 AZURE_KEY      = os.getenv("AZURE_OPENAI_API_KEY", "")
 AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
 AZURE_DEPLOY   = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT", "embed-model")
-USE_AZURE      = bool(AZURE_KEY and AZURE_ENDPOINT)
 
-if USE_AZURE:
-    from openai import AzureOpenAI
-    _azure_client = AzureOpenAI(
-        api_key=AZURE_KEY,
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version="2024-12-01-preview",
-    )
-else:
-    import ollama
+if not (AZURE_KEY and AZURE_ENDPOINT):
+    raise RuntimeError("Azure OpenAI credentials missing. Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in .env")
+
+_azure_client = AzureOpenAI(
+    api_key=AZURE_KEY,
+    azure_endpoint=AZURE_ENDPOINT,
+    api_version="2024-12-01-preview",
+)
 
 # --- Auto-detect Azure AI Search from .env (optional dual-write) ---
 SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
@@ -192,22 +190,13 @@ def ingest_excel():
 
     embeddings = []
     total_texts = len(texts)
-    provider = "Azure OpenAI" if USE_AZURE else "Ollama (local CPU)"
-    print(f"  Embedding provider: {provider}")
+    print(f"  Embedding provider: Azure OpenAI ({AZURE_DEPLOY})")
 
     for start in range(0, total_texts, EMBED_BATCH):
         end = min(start + EMBED_BATCH, total_texts)
-        if USE_AZURE:
-            batch_texts = [t[:8000] for t in texts[start:end]]
-            resp = _azure_client.embeddings.create(
-                model=AZURE_DEPLOY,
-                input=batch_texts,
-            )
-            embeddings.extend([d.embedding for d in resp.data])
-        else:
-            batch_texts = [t[:1500] for t in texts[start:end]]
-            resp = ollama.embed(model=EMBED_MODEL_OLLAMA, input=batch_texts)
-            embeddings.extend(resp.embeddings)
+        batch_texts = [t[:8000] for t in texts[start:end]]
+        resp = _azure_client.embeddings.create(model=AZURE_DEPLOY, input=batch_texts)
+        embeddings.extend([d.embedding for d in resp.data])
         print(f"  Embedded {end}/{total_texts}...")
 
     total = len(texts)

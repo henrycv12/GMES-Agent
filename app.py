@@ -3,7 +3,7 @@ import os
 import sys
 import streamlit as st
 import chromadb
-import ollama
+from openai import AzureOpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,24 +13,22 @@ if sys.platform == "win32":
 
 CHROMA_DIR = "./chroma_db"
 WO_COLLECTION = "work_orders"
-OLLAMA_MODEL = "llama3.2:1b"
-EMBED_MODEL = "nomic-embed-text"
 TOP_K = 15
 
-# --- Azure OpenAI (embeddings + LLM) ---
 AZURE_KEY        = os.getenv("AZURE_OPENAI_API_KEY", "")
 AZURE_ENDPOINT   = os.getenv("AZURE_OPENAI_ENDPOINT", "")
 AZURE_DEPLOY     = os.getenv("AZURE_OPENAI_EMBED_DEPLOYMENT", "embed-model")
 AZURE_LLM_DEPLOY = os.getenv("AZURE_OPENAI_LLM_DEPLOYMENT", "gpt-4o")
-USE_AZURE        = bool(AZURE_KEY and AZURE_ENDPOINT)
 
-if USE_AZURE:
-    from openai import AzureOpenAI
-    _azure_client = AzureOpenAI(
-        api_key=AZURE_KEY,
-        azure_endpoint=AZURE_ENDPOINT,
-        api_version="2024-12-01-preview",
-    )
+if not (AZURE_KEY and AZURE_ENDPOINT):
+    st.error("❌ **Azure OpenAI credentials missing.** Set `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_ENDPOINT` in your `.env` file.")
+    st.stop()
+
+_azure_client = AzureOpenAI(
+    api_key=AZURE_KEY,
+    azure_endpoint=AZURE_ENDPOINT,
+    api_version="2024-12-01-preview",
+)
 
 RECENCY_KEYWORDS = {
     "recent", "latest", "last", "newest", "most recent",
@@ -87,11 +85,8 @@ def rewrite_query(user_input, history):
 
 
 def embed_query(query):
-    if USE_AZURE:
-        resp = _azure_client.embeddings.create(model=AZURE_DEPLOY, input=[query])
-        return resp.data[0].embedding
-    else:
-        return ollama.embed(model=EMBED_MODEL, input=[query]).embeddings[0]
+    resp = _azure_client.embeddings.create(model=AZURE_DEPLOY, input=[query])
+    return resp.data[0].embedding
 
 
 def retrieve_context(query, collection, top_k=TOP_K):
@@ -171,43 +166,25 @@ def build_messages(query, items, history):
 
 
 def call_llm(messages, model_name=None):
-    if USE_AZURE:
-        deployment = model_name or AZURE_LLM_DEPLOY
-        resp = _azure_client.chat.completions.create(
-            model=deployment,
-            messages=messages,
-            temperature=0.2,
-            max_tokens=1500,
-        )
-        return resp.choices[0].message.content
-    else:
-        response = ollama.chat(
-            model=model_name or OLLAMA_MODEL,
-            messages=messages,
-            stream=False,
-        )
-        return response["message"]["content"]
+    resp = _azure_client.chat.completions.create(
+        model=model_name or AZURE_LLM_DEPLOY,
+        messages=messages,
+        temperature=0.2,
+        max_tokens=1500,
+    )
+    return resp.choices[0].message.content
 
 
 # --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ Settings")
-    if USE_AZURE:
-        model_choice = st.selectbox(
-            "Azure LLM Model",
-            ["gpt-4o", "gpt-4o-mini"],
-            index=0,
-            help="Azure OpenAI deployment name",
-        )
-        st.caption("🟢 Azure OpenAI (embeddings + LLM)")
-    else:
-        model_choice = st.selectbox(
-            "Ollama Model",
-            ["llama3.2:1b", "llama3.2:3b", "llama3", "mistral", "phi3:mini"],
-            index=0,
-            help="Must be pulled via: ollama pull <model>",
-        )
-        st.caption("🟡 Ollama fallback (no .env found)")
+    model_choice = st.selectbox(
+        "Azure LLM Model",
+        ["gpt-4o", "gpt-4o-mini"],
+        index=0,
+        help="Azure OpenAI deployment name",
+    )
+    st.caption("🟢 Azure OpenAI (embeddings + LLM)")
     top_k = st.slider("Similar work orders (Top K)", min_value=3, max_value=30, value=15)
     st.divider()
     st.header("📂 Knowledge Base")
@@ -258,19 +235,11 @@ if db_ready:
                 messages = build_messages(user_input, items, history_so_far)
 
             try:
-                spinner_msg = "Generating answer..." if USE_AZURE else "Generating answer (this may take 20–60 seconds)..."
-                with st.spinner(spinner_msg):
+                with st.spinner("Generating answer..."):
                     full_response = call_llm(messages, model_name=model_choice)
                 st.markdown(full_response)
             except Exception as e:
-                if USE_AZURE:
-                    full_response = f"❌ **Azure OpenAI error:** `{e}`"
-                else:
-                    full_response = (
-                        f"❌ **Ollama error:** `{e}`\n\n"
-                        f"Make sure Ollama is running and `{model_choice}` is pulled:\n"
-                        f"```\nollama pull {model_choice}\n```"
-                    )
+                full_response = f"❌ **Azure OpenAI error:** `{e}`"
                 st.markdown(full_response)
 
             with st.expander(f"📋 {len(items)} work orders referenced"):

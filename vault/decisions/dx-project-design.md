@@ -40,11 +40,11 @@ Data Layer       → Azure SQL Database
 
 | Original | GMES Agent equivalent | Status |
 |---|---|---|
-| Microsoft Teams | Copilot Studio (subscription required) | 🟡 Partial — requires Teams Premium |
+| Microsoft Teams | Copilot Studio published to Teams channel | 🟡 Partial — requires Copilot Studio subscription |
 | Copilot Studio agent | Azure Functions `/api/query` + Power Automate connector | ✅ Done |
 | Azure AI Search (vector) | Azure AI Search (`work-orders` index) + ChromaDB fallback | ✅ Done |
-| Azure OpenAI GPT-4 (reasoning) | Azure OpenAI `gpt-4o` (with Ollama `llama3.2:1b` local fallback) | ✅ Done |
-| Azure OpenAI embeddings | Azure OpenAI `text-embedding-3-small` (with Ollama `nomic-embed-text` fallback) | ✅ Done |
+| Azure OpenAI GPT-4 (reasoning) | Azure OpenAI `gpt-4o` | ✅ Done |
+| Azure OpenAI embeddings | Azure OpenAI `text-embedding-3-small` (`embed-model` deployment) | ✅ Done |
 | Azure SQL Database | GMES `.xlsx`/`.csv` export → ChromaDB + Azure AI Search | 🟡 Partial |
 | Multi-turn conversation history | Azure Table Storage (`convhistory` table) + Streamlit session state | ✅ Done |
 | Cited work order output | Inline citations in every answer (WO#, date, technician, equipment) | ✅ Done |
@@ -96,7 +96,7 @@ Data Layer       → Azure SQL Database
 
 | NO | Team | Week | Project Title | Current Status | Target | Planned Progress | Actual Progress | Flag | Note/Issue |
 |---|---|---|---|---|---|---|---|---|---|
-| 6 | PE | W25 | Development of an AI-based Work Order Management and Analytics System | Testing & Feedback | Jun 26 | 85% | 80% | 🟡 | Core RAG system complete: Azure OpenAI `gpt-4o`, Azure AI Search, Azure Functions `/api/query`, Power Automate custom connector, Azure Table Storage multi-turn history, inline WO citations, query rewriting, recency-aware retrieval — all implemented and committed. PE team actively validating response quality. Pending: recurring failure analytics, automated nightly GMES sync, Teams integration, output actions (Create PM Task, Export Summary). **Note**: Teams integration requires Copilot Studio with Teams Premium subscription (separate from current provisioned resources). Azure Logic Apps Timer Trigger needed for automated nightly sync. |
+| 6 | PE | W25 | Development of an AI-based Work Order Management and Analytics System | Testing & Feedback | Jun 26 | 85% | 80% | 🟡 | Core RAG system complete: Azure OpenAI `gpt-4o`, Azure AI Search, Azure Functions `/api/query`, Power Automate custom connector, Azure Table Storage multi-turn history, inline WO citations, query rewriting, recency-aware retrieval — all implemented and committed. PE team actively validating response quality. Pending: recurring failure analytics, automated nightly GMES sync, Teams integration, output actions (Create PM Task, Export Summary). **Note**: Teams integration requires a Copilot Studio subscription (Teams Premium is NOT needed — Copilot Studio publishes directly to Teams channel). Automated nightly sync is blocked on HQ GMES API access, not a subscription issue. |
 
 ## Gap Analysis — What GMES Agent Still Needs
 
@@ -121,6 +121,6 @@ Data Layer       → Azure SQL Database
 - [ ] **Cross-line pattern queries** — frequency rollups ("which lines had the most X failures in Q1?")
 - [ ] **Create PM Task** output action — one-click handoff to PM checklist (requires Power Automate Premium)
 - [ ] **Export Summary** — cited records + cause ready to share with team (requires Power Automate Premium)
-- [ ] **Automated nightly sync** from GMES — currently manual `.xlsx` export required (requires Azure Logic Apps Timer Trigger or Azure Functions timer)
-- [ ] **Teams integration** — Copilot Studio surfaced inside Microsoft Teams (requires Teams Premium subscription)
+- [ ] **Automated nightly sync** from GMES — blocked on HQ GMES API access; manual `.xlsx` export is the current workaround
+- [ ] **Teams integration** — Copilot Studio published to Teams channel; requires Copilot Studio subscription (Teams Premium is NOT required)
 - [ ] **Open Source WO** — direct link back to original GMES record
