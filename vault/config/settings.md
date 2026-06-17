@@ -4,14 +4,27 @@
 
 | Setting | Value |
 |---|---|
-| LLM model | `llama3.2:1b` (default), `llama3.2:3b` (quality) |
-| Embedding model | `nomic-embed-text` |
-| ChromaDB path | `./chroma_db/` |
-| Collection name | `work_orders` |
-| Top-K | 6 (default), adjustable 3–15 in sidebar |
-| Embed batch size | 100 texts per `ollama.embed()` call |
-| DB insert batch | 500 records per `ChromaDB.add()` call |
-| Max text per record | 1,500 characters (truncated before embedding) |
+| LLM model | `gpt-4o` (AZURE_LLM_DEPLOY) |
+| Rewrite model | `gpt-4o` (AZURE_REWRITE_DEPLOY, can set to `gpt-4o-mini` for cost savings) |
+| Embedding model | `text-embedding-3-small` (AZURE_OPENAI_EMBED_DEPLOYMENT) |
+| Azure AI Search index | `work-orders` |
+| Semantic configuration | `default` |
+| TOP_K (standard queries) | 10 |
+| COUNT_FETCH_K (count queries) | 50 (semantic max) |
+| WO_TEXT_LIMIT | 300 chars (truncated for LLM context) |
+| History window | 6 messages |
+| max_tokens (answer) | 800 |
+| Embed batch size | 500 texts per Azure OpenAI embed call |
+| Search insert batch | 500 records per Azure AI Search add() call |
+
+## Query intelligence
+
+| Query type | Detection | Fetch limit | Special behavior |
+|---|---|---|---|
+| Recency | `RECENCY_KEYWORDS` | 30 (TOP_K×3) | Client-side sort by `date_ts` desc, return TOP_K |
+| Count | `COUNT_KEYWORDS` | 50 | `includeTotalCount=true`, inject total into LLM context |
+| Count + time window | `COUNT_KEYWORDS` + `parseDateWindow()` | 50 | Inject cutoff date, LLM counts only records ≥ that date |
+| Standard | default | 10 | Normal semantic search |
 
 ## Excel column mapping
 

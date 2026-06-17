@@ -2,31 +2,50 @@
 
 ## Ingest pipeline
 ```
-GMES Export (.xlsx)
-  → pandas.read_excel()
+GMES Export (.xlsx or .csv)
+  → pandas.read_excel() / pd.read_csv()
   → Sort by Maint. Plan Date DESC
   → row_to_text() → formatted text block per WO
-  → Check existing IDs in ChromaDB (skip duplicates)
-  → ollama.embed(model="nomic-embed-text", input=batch[100])
-  → chromadb.add(documents, embeddings, ids, metadatas)
-     metadata: wo_no, date, date_ts, equipment, equip_id, line, group, maint_type, source
+  → Azure OpenAI embed(batch=500) → embeddings[]
+  → Azure AI Search index "work-orders" (incremental upsert)
+     fields: wo_no, date, date_ts, equipment, equip_id, line, group, maint_type, source, content, technician
 ```
 
-## Query pipeline
+## Query pipeline (React Frontend)
 ```
-User types question in Streamlit
-  → ollama.embeddings(model="nomic-embed-text", prompt=query)
-  → is_recency_query(query)?
-      YES → fetch top_k * 3, sort by date_ts DESC, take top_k
-      NO  → fetch top_k directly
-  → build_prompt(query, items) → structured prompt with WO context
-  → ollama.chat(model="llama3.2:1b", stream=False)
-  → Display answer + expandable "Work orders referenced" section
+User types question in React UI
+  → POST /api/query (Next.js route)
+  → rewriteQuery(question, history) → LLM call (REWRITE_DEPLOY)
+  → searchWorkOrders(query)
+      → Azure AI Search semantic search
+      → [count queries: top=50, includeTotalCount=true]
+      → [recency queries: top=30, client-sort by date_ts desc]
+      → [standard: top=10]
+  → buildMessages(query, items, history, totalCount)
+      → injects COUNT METADATA or date window for count queries
+  → callLlm(messages) → gpt-4o, max_tokens=800
+  → Display answer + WoCards (clickable WO citations)
 ```
 
-## ChromaDB collection schema
-- **Collection:** `work_orders`
-- **ID format:** `WO_{filename}_{wo_no}_{row_idx}`
-- **Document:** Full formatted text of the work order
-- **Metadata fields:** `source`, `wo_no`, `date`, `date_ts`, `equipment`, `equip_id`, `line`, `group`, `maint_type`
+## Query pipeline (Copilot Studio)
+```
+User types question in Copilot Studio
+  → Power Automate Flow (GMES Query Flow)
+  → Azure Functions API /api/query
+      → Same logic as React frontend above
+  → Flow returns answer to Copilot Studio
+```
+
+## Azure AI Search index schema
+- **Index:** `work-orders`
+- **Semantic configuration:** `default`
+- **Key fields:**
+  - `wo_no` (filterable, sortable)
+  - `date` (filterable, sortable)
+  - `date_ts` (sortable)
+  - `equipment` (filterable)
+  - `maint_type` (filterable)
+  - `technician` (filterable)
+  - `content` (searchable, vectorized)
+  - `line`, `group`, `source`, `equip_id`
 
