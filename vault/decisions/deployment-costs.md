@@ -86,7 +86,7 @@ The GMES Agent core RAG system is complete and operational (Azure OpenAI, AI Sea
 - Copilot Studio subscription
 - Copilot Studio Teams channel configuration
 
-**Priority**: Medium — important for user adoption, but currently blocked by billing issue in LGE Power Platform tenant
+**Priority**: High — primary front-end for users, currently blocked by billing issue in LGE Power Platform tenant
 
 **Status**: BLOCKED — Copilot Studio publish to Teams blocked by billing issue in LGE Power Platform tenant. Requires Copilot Studio subscription resolution.
 
@@ -100,7 +100,7 @@ The GMES Agent core RAG system is complete and operational (Azure OpenAI, AI Sea
 | Recurring failure analytics (Option B) | Azure SQL Database | $50-100/month | High | Requires provisioning |
 | Create PM Task action | Power Automate Premium | $15-20/user/month | Low | Requires license |
 | Export Summary action | Power Automate Premium | $15-20/user/month | Medium | Requires license |
-| Teams integration | Copilot Studio subscription | $20-50/month | Medium | BLOCKED by billing |
+| Teams integration | Copilot Studio subscription | $20-50/month | High | BLOCKED by billing |
 
 **Minimum cost to complete deployment**: $0 (using Azure AI Search facets for analytics, deferring output actions and Teams integration until licensing resolved)
 
@@ -113,4 +113,5 @@ The GMES Agent core RAG system is complete and operational (Azure OpenAI, AI Sea
 - **Nightly GMES sync**: Excluded from this analysis — depends on HQ API service availability, not IT
 - **Current Azure services**: Azure OpenAI, AI Search, Table Storage, and basic Copilot Studio are already provisioned and operational
 - **Licensing**: Power Automate Premium is a per-seat license — need to determine number of users. Copilot Studio subscription is per-bot or per-user depending on license tier.
+- **Power Apps licensing**: If using Power Apps with custom connector (GMES Agent API), requires Power Apps per user plan, per app plan, or pay-as-you-go plan for playback.
 - **Azure SQL**: Only needed if AI Search facets are insufficient for complex aggregations — can start with Option A and upgrade to Option B if needed

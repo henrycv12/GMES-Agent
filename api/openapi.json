@@ -46,6 +46,42 @@
           }
         ]
       }
+    },
+    "/analytics": {
+      "post": {
+        "summary": "Aggregate work orders by field",
+        "description": "Get aggregated counts of work orders grouped by line, equipment, maintenance type, or group with optional date range and text filtering",
+        "operationId": "GetAnalytics",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/AnalyticsRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregated analytics results",
+            "schema": {
+              "$ref": "#/definitions/AnalyticsResponse"
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
     }
   },
   "definitions": {
@@ -110,6 +146,120 @@
         "card": {
           "type": "string",
           "description": "Adaptive Card JSON string for cited work orders"
+        }
+      }
+    },
+    "AnalyticsRequest": {
+      "type": "object",
+      "properties": {
+        "group_by": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Field to group by (line, equipment, maint_type, group)",
+              "enum": ["line", "equipment", "maint_type", "group"]
+            },
+            {
+              "type": "array",
+              "description": "Multiple fields to group by for cross-line pattern queries",
+              "items": {
+                "type": "string",
+                "enum": ["line", "equipment", "maint_type", "group"]
+              }
+            }
+          ],
+          "default": "line"
+        },
+        "date_from": {
+          "type": "string",
+          "description": "Start date in ISO format (e.g., 2026-01-01)"
+        },
+        "date_to": {
+          "type": "string",
+          "description": "End date in ISO format (e.g., 2026-03-31)"
+        },
+        "top_n": {
+          "type": "integer",
+          "description": "Number of top results to return",
+          "default": 10
+        },
+        "filter": {
+          "type": "string",
+          "description": "Optional text filter to apply (e.g., diverter jam)"
+        },
+        "compare_lines": {
+          "type": "array",
+          "description": "Optional: compare specific lines (e.g., ['EPS Line 1', 'Press Line 1'])",
+          "items": {
+            "type": "string"
+          }
+        },
+        "time_group": {
+          "type": "string",
+          "description": "Optional: time-based aggregation (week, month, quarter)",
+          "enum": ["week", "month", "quarter"]
+        }
+      }
+    },
+    "AnalyticsResponse": {
+      "type": "object",
+      "properties": {
+        "group_by": {
+          "type": "array",
+          "description": "Fields that were grouped by"
+        },
+        "date_from": {
+          "type": "string",
+          "description": "Start date used in filter"
+        },
+        "date_to": {
+          "type": "string",
+          "description": "End date used in filter"
+        },
+        "filter": {
+          "type": "string",
+          "description": "Text filter used"
+        },
+        "compare_lines": {
+          "type": "array",
+          "description": "Lines that were compared"
+        },
+        "time_group": {
+          "type": "string",
+          "description": "Time grouping used (week, month, quarter)"
+        },
+        "results": {
+          "type": "array",
+          "description": "Aggregated results with counts",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time_period": {
+                "type": "string",
+                "description": "Time period (if time_group was specified)"
+              },
+              "line": {
+                "type": "string",
+                "description": "Line name (if grouped by line)"
+              },
+              "equipment": {
+                "type": "string",
+                "description": "Equipment name (if grouped by equipment)"
+              },
+              "maint_type": {
+                "type": "string",
+                "description": "Maintenance type (if grouped by maint_type)"
+              },
+              "group": {
+                "type": "string",
+                "description": "Group name (if grouped by group)"
+              },
+              "count": {
+                "type": "integer",
+                "description": "Number of work orders"
+              }
+            }
+          }
         }
       }
     }
