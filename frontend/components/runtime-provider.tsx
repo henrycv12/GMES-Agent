@@ -6,12 +6,64 @@ import {
   type ThreadMessageLike,
   type AppendMessage,
 } from "@assistant-ui/react";
-import { createContext, useState, useCallback } from "react";
+import { createContext, useState, useCallback, useEffect } from "react";
 import { queryWorkOrders, type WorkOrder } from "@/lib/api";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface Conversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  messages: ThreadMessageLike[];
+  woMap: Record<string, WorkOrder[]>;
+}
+
+// ---------------------------------------------------------------------------
+// Context
+// ---------------------------------------------------------------------------
 
 export const GmesContext = createContext<{
   woMap: Record<string, WorkOrder[]>;
-}>({ woMap: {} });
+  conversations: Conversation[];
+  activeId: string;
+  newConversation: () => void;
+  switchConversation: (id: string) => void;
+  deleteConversation: (id: string) => void;
+}>({
+  woMap: {},
+  conversations: [],
+  activeId: "",
+  newConversation: () => {},
+  switchConversation: () => {},
+  deleteConversation: () => {},
+});
+
+// ---------------------------------------------------------------------------
+// localStorage helpers
+// ---------------------------------------------------------------------------
+
+const LS_KEY = "gmes-conversations";
+const LS_ACTIVE = "gmes-active-id";
+
+function makeConversation(): Conversation {
+  return { id: crypto.randomUUID(), title: "New chat", createdAt: Date.now(), messages: [], woMap: {} };
+}
+
+function initState(): { conversations: Conversation[]; activeId: string } {
+  if (typeof window === "undefined") {
+    const c = makeConversation();
+    return { conversations: [c], activeId: c.id };
+  }
+  let convs: Conversation[] = [];
+  try { convs = JSON.parse(localStorage.getItem(LS_KEY) ?? "[]"); } catch {}
+  if (!convs.length) convs = [makeConversation()];
+  const saved = localStorage.getItem(LS_ACTIVE) ?? "";
+  const activeId = convs.find((c) => c.id === saved) ? saved : convs[0].id;
+  return { conversations: convs, activeId };
+}
 
 function getTextFromMessage(msg: ThreadMessageLike): string {
   if (typeof msg.content === "string") return msg.content;
@@ -25,14 +77,53 @@ function getTextFromMessage(msg: ThreadMessageLike): string {
   return "";
 }
 
-export function GmesRuntimeProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([]);
-  const [woMap, setWoMap] = useState<Record<string, WorkOrder[]>>({});
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
+export function GmesRuntimeProvider({ children }: { children: React.ReactNode }) {
+  const [{ conversations, activeId }, setStore] = useState(initState);
   const [isRunning, setIsRunning] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(conversations)); } catch {}
+  }, [conversations]);
+
+  useEffect(() => {
+    if (activeId) try { localStorage.setItem(LS_ACTIVE, activeId); } catch {}
+  }, [activeId]);
+
+  const activeConv = conversations.find((c) => c.id === activeId) ?? conversations[0];
+  const messages = activeConv?.messages ?? [];
+  const woMap = activeConv?.woMap ?? {};
+
+  const updateActive = useCallback((updater: (c: Conversation) => Conversation) => {
+    setStore((prev) => ({
+      ...prev,
+      conversations: prev.conversations.map((c) => c.id === prev.activeId ? updater(c) : c),
+    }));
+  }, []);
+
+  const newConversation = useCallback(() => {
+    const conv = makeConversation();
+    setStore((prev) => ({ conversations: [conv, ...prev.conversations], activeId: conv.id }));
+  }, []);
+
+  const switchConversation = useCallback((id: string) => {
+    setStore((prev) => ({ ...prev, activeId: id }));
+  }, []);
+
+  const deleteConversation = useCallback((id: string) => {
+    setStore((prev) => {
+      const remaining = prev.conversations.filter((c) => c.id !== id);
+      if (!remaining.length) {
+        const fresh = makeConversation();
+        return { conversations: [fresh], activeId: fresh.id };
+      }
+      const newActive = prev.activeId === id ? remaining[0].id : prev.activeId;
+      return { conversations: remaining, activeId: newActive };
+    });
+  }, []);
 
   const onNew = useCallback(
     async (message: AppendMessage) => {
@@ -45,61 +136,61 @@ export function GmesRuntimeProvider({
         content: [{ type: "text", text }],
       };
 
-      setMessages((prev) => {
-        const next = [...prev, userMsg];
-        return next;
-      });
+      const currentMessages = activeConv?.messages ?? [];
+
+      updateActive((conv) => ({
+        ...conv,
+        title: conv.messages.length === 0 ? text.slice(0, 45) : conv.title,
+        messages: [...conv.messages, userMsg],
+      }));
 
       setIsRunning(true);
 
       try {
-        const history = [...messages].map((m) => ({
+        const history = currentMessages.map((m) => ({
           role: m.role as "user" | "assistant",
           content: getTextFromMessage(m),
         }));
 
         const data = await queryWorkOrders({ question: text, history });
-
         const msgId = crypto.randomUUID();
 
         const assistantMsg: ThreadMessageLike = {
           id: msgId,
           role: "assistant",
+          status: { type: "complete", reason: "stop" },
           content: [{ type: "text", text: data.answer }],
         };
 
-        setMessages((prev) => [...prev, assistantMsg]);
-        setWoMap((prev) => ({
-          ...prev,
-          [msgId]: data.work_orders ?? [],
+        updateActive((conv) => ({
+          ...conv,
+          messages: [...conv.messages, assistantMsg],
+          woMap: { ...conv.woMap, [msgId]: data.work_orders ?? [] },
         }));
       } catch (err) {
         const errorMsg: ThreadMessageLike = {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: `Sorry, something went wrong: ${err instanceof Error ? err.message : String(err)}`,
-            },
-          ],
+          status: { type: "incomplete", reason: "error" },
+          content: [{ type: "text", text: `Sorry, something went wrong: ${err instanceof Error ? err.message : String(err)}` }],
         };
-        setMessages((prev) => [...prev, errorMsg]);
+        updateActive((conv) => ({ ...conv, messages: [...conv.messages, errorMsg] }));
       } finally {
         setIsRunning(false);
       }
     },
-    [messages]
+    [activeConv, updateActive]
   );
 
   const runtime = useExternalStoreRuntime({
     messages,
     isRunning,
     onNew,
+    convertMessage: (m: ThreadMessageLike) => m,
   });
 
   return (
-    <GmesContext.Provider value={{ woMap }}>
+    <GmesContext.Provider value={{ woMap, conversations, activeId, newConversation, switchConversation, deleteConversation }}>
       <AssistantRuntimeProvider runtime={runtime}>
         {children}
       </AssistantRuntimeProvider>

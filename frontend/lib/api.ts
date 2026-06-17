@@ -5,6 +5,9 @@ export interface WorkOrder {
   equipment: string;
   maint_type: string;
   line: string;
+  group?: string;
+  source?: string;
+  content?: string;
 }
 
 export interface QueryResponse {

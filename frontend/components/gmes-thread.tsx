@@ -2,11 +2,14 @@
 
 import { useContext } from "react";
 import {
-  Thread,
+  ThreadPrimitive,
+  MessagePrimitive,
+  ComposerPrimitive,
   useMessage,
   useComposerRuntime,
-  AssistantMessageContent,
 } from "@assistant-ui/react";
+import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
+import { Send } from "lucide-react";
 import { WoCards } from "@/components/wo-cards";
 import { GmesContext } from "@/components/runtime-provider";
 
@@ -19,21 +22,11 @@ const SUGGESTIONS = [
 
 function SuggestionButton({ text }: { text: string }) {
   const composer = useComposerRuntime();
-
-  const handleClick = () => {
-    composer.setText(text);
-    composer.send();
-  };
-
   return (
     <button
-      onClick={handleClick}
+      onClick={() => { composer.setText(text); composer.send(); }}
       className="text-left px-4 py-2 rounded-xl border text-sm transition-colors hover:bg-[#EDE9DF]"
-      style={{
-        borderColor: "#E0DDD5",
-        color: "#7A7568",
-        backgroundColor: "#ffffff",
-      }}
+      style={{ borderColor: "#E0DDD5", color: "#7A7568", backgroundColor: "#ffffff" }}
     >
       {text}
     </button>
@@ -61,28 +54,88 @@ function WelcomeScreen() {
   );
 }
 
-function CustomAssistantMessage() {
+function UserMessage() {
+  return (
+    <MessagePrimitive.Root className="flex justify-end px-4 py-2">
+      <div
+        className="max-w-[80%] rounded-2xl px-4 py-2 text-sm"
+        style={{ backgroundColor: "#A8785A", color: "#ffffff" }}
+      >
+        <MessagePrimitive.Content />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}
+
+function AssistantMessage() {
   const message = useMessage();
   const { woMap } = useContext(GmesContext);
   const wos = message.id ? (woMap[message.id] ?? []) : [];
-
   return (
-    <div>
-      <AssistantMessageContent />
-      <WoCards workOrders={wos} />
+    <MessagePrimitive.Root className="flex justify-start px-4 py-2">
+      <div className="md-content max-w-[85%] text-sm" style={{ color: "#1A1A1A" }}>
+        <MessagePrimitive.Content
+          components={{ Text: MarkdownTextPrimitive }}
+        />
+        <WoCards workOrders={wos} />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}
+
+function ThinkingIndicator() {
+  return (
+    <div className="flex justify-start px-4 py-2">
+      <div
+        className="flex items-center gap-1.5 rounded-2xl px-4 py-3 text-sm"
+        style={{ backgroundColor: "#F5F3EE", color: "#7A7568" }}
+      >
+        <span className="text-xs" style={{ color: "#A09990" }}>Thinking</span>
+        <span className="flex gap-1">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="inline-block w-1.5 h-1.5 rounded-full animate-bounce"
+              style={{
+                backgroundColor: "#A8785A",
+                animationDelay: `${i * 150}ms`,
+                animationDuration: "900ms",
+              }}
+            />
+          ))}
+        </span>
+      </div>
     </div>
   );
 }
 
 export function GmesThread() {
   return (
-    <Thread
-      welcome={{
-        message: <WelcomeScreen />,
-      }}
-      components={{
-        AssistantMessage: CustomAssistantMessage,
-      }}
-    />
+    <ThreadPrimitive.Root className="flex flex-col h-full bg-white">
+      <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto">
+        <ThreadPrimitive.Empty>
+          <WelcomeScreen />
+        </ThreadPrimitive.Empty>
+        <ThreadPrimitive.Messages
+          components={{ UserMessage, AssistantMessage }}
+        />
+        <ThreadPrimitive.If running>
+          <ThinkingIndicator />
+        </ThreadPrimitive.If>
+      </ThreadPrimitive.Viewport>
+
+      <div className="border-t p-4" style={{ borderColor: "#E0DDD5" }}>
+        <ComposerPrimitive.Root className="flex items-end gap-2 rounded-2xl border px-4 py-2" style={{ borderColor: "#E0DDD5" }}>
+          <ComposerPrimitive.Input
+            className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-[#A09990] min-h-[24px] max-h-[120px]"
+            placeholder="Ask about equipment, failures, repairs..."
+            rows={1}
+          />
+          <ComposerPrimitive.Send className="flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:opacity-40" style={{ backgroundColor: "#A8785A", color: "#ffffff" }}>
+            <Send size={14} />
+          </ComposerPrimitive.Send>
+        </ComposerPrimitive.Root>
+      </div>
+    </ThreadPrimitive.Root>
   );
 }

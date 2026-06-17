@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from datetime import datetime, timedelta
 
 import pandas as pd
 import azure.functions as func
@@ -48,28 +49,47 @@ def _set_history(conv_id: str, history: list) -> None:
 AZURE_OAI_KEY      = os.environ["AZURE_OPENAI_API_KEY"]
 AZURE_OAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
 AZURE_EMBED_DEPLOY = os.environ.get("AZURE_OPENAI_EMBED_DEPLOYMENT", "embed-model")
-AZURE_LLM_DEPLOY   = os.environ.get("AZURE_OPENAI_LLM_DEPLOYMENT", "gpt-4o")
+AZURE_LLM_DEPLOY     = os.environ.get("AZURE_OPENAI_LLM_DEPLOYMENT", "gpt-4o")
+AZURE_REWRITE_DEPLOY = os.environ.get("AZURE_OPENAI_REWRITE_DEPLOYMENT", AZURE_LLM_DEPLOY)
 SEARCH_ENDPOINT    = os.environ["AZURE_SEARCH_ENDPOINT"]
 SEARCH_KEY         = os.environ["AZURE_SEARCH_KEY"]
 SEARCH_INDEX       = os.environ.get("AZURE_SEARCH_INDEX", "work-orders")
 
-TOP_K = 15
+TOP_K = 10
+COUNT_FETCH_K = 50
+WO_TEXT_LIMIT = 300
 RECENCY_KEYWORDS = {"recent", "latest", "last", "newest", "this week", "this month", "who worked", "who last", "last person", "most recent"}
+COUNT_KEYWORDS   = {"how many", "count", "total", "number of", "how often", "how much", "times has", "times did", "times was", "occurrences"}
 
 SYSTEM_BASE = (
     "You are an expert maintenance technician assistant for LG Electronics TN Production Engineering. "
     "You have access to historical work order records from GMES. "
-    "CRITICAL — Match your answer length and style to the question being asked:\n"
-    "- If asked WHO worked on something or WHEN: give a direct 1-3 sentence answer naming the technician, date, and WO reference. Do NOT give a full history.\n"
-    "- If asked WHAT happened or WHAT failures exist: give a structured summary.\n"
-    "- If asked HOW TO FIX something: give step-by-step guidance based on past resolutions.\n"
-    "- If asked about the LAST or MOST RECENT work: sort by date and report only the most recent entry.\n"
+    "FORMAT YOUR ANSWERS like a modern AI assistant — use rich markdown:\n"
+    "- SECTION HEADERS: always use ### for section titles (e.g., ### Sensor Issues). NEVER use **Bold:** or 'Bold:' as a header — that pattern is forbidden.\n"
+    "- Use **bold** only for inline emphasis: equipment names, technician names, key findings within a sentence.\n"
+    "- Use `inline code` for WO numbers and part numbers (e.g., `WO #2070`).\n"
+    "- Use bullet lists for failures/occurrences; include the date and WO number on each bullet.\n"
+    "- Use a markdown table for cross-category summaries (Cause Type | Count | Example Dates). Keep tables concise — max 5 columns.\n"
+    "- Do NOT add a redundant 'Insights' or 'Summary' section after a table that already contains the same data.\n"
+    "- Keep single-fact answers short (1–3 sentences). Use structure only when the answer has multiple points.\n"
+    "MATCH DEPTH TO QUESTION:\n"
+    "- WHO/WHEN → 1–3 sentences, bold the name and date. No headers, no table.\n"
+    "- WHAT failures/history → ### grouped by cause type, bullets under each, summary table at the end.\n"
+    "- HOW TO FIX → numbered step-by-step based on past resolutions.\n"
+    "- RECURRENCE → state total count bold, then bullet each occurrence with date + WO + one-line description.\n"
+    "- MOST RECENT → single focused answer for the latest entry only.\n"
+    "GROUNDING RULE (CRITICAL): You may ONLY reference work orders that appear verbatim in the provided context. "
+    "NEVER invent, fabricate, or infer WO numbers, dates, technicians, or equipment names that are not explicitly in the records given to you. "
+    "If you are counting work orders, count only those present in the context — never round up or pad the list. "
+    "If a field is missing from a record, omit that record from your cited list rather than filling it with placeholders.\n"
     "ALWAYS answer from the work order records provided. Never say 'I'm not sure how to help' — "
     "if work orders are provided, extract the answer from them directly. "
     "NEVER ask the user to clarify or specify — use the conversation history to infer which machine, "
     "work order, or technician they mean. If the previous answer mentioned a specific work order, "
     "assume the follow-up question refers to that same work order. "
     "If no relevant history exists, clearly say so.\n"
+    "DATE RULE: Always include the date inline whenever referencing a specific work order or event (e.g., 'On **2024-03-15**, **Kim** replaced...'). Never omit dates.\n"
+    "RECURRENCE RULE: For recurrence/frequency questions, state the total count explicitly, then list each occurrence with its date.\n"
     "After your answer, always append a blank line followed by:\n"
     "---\n"
     "📋 **Cited Work Orders**\n"
@@ -99,6 +119,32 @@ def is_recency_query(query: str) -> bool:
     return any(kw in q for kw in RECENCY_KEYWORDS)
 
 
+def is_count_query(query: str) -> bool:
+    q = query.lower()
+    return any(kw in q for kw in COUNT_KEYWORDS)
+
+
+def parse_date_window(query: str):
+    """Returns (label, since_date) or None if no time window found."""
+    q = query.lower()
+    now = datetime.utcnow()
+    m = re.search(r'last\s+(\d+)\s+(day|week|month|year)s?', q)
+    if m:
+        n, unit = int(m.group(1)), m.group(2)
+        delta = {"day": timedelta(days=n), "week": timedelta(weeks=n),
+                 "month": timedelta(days=n*30), "year": timedelta(days=n*365)}
+        since = now - delta[unit]
+        return f"last {n} {unit}{'s' if n > 1 else ''}", since
+    if "this month" in q:
+        return "this month", now.replace(day=1, hour=0, minute=0, second=0)
+    if "this year" in q or "ytd" in q or "year to date" in q:
+        return "this year", now.replace(month=1, day=1, hour=0, minute=0, second=0)
+    if "this week" in q:
+        since = now - timedelta(days=now.weekday())
+        return "this week", since.replace(hour=0, minute=0, second=0)
+    return None
+
+
 def rewrite_query(user_input: str, history: list) -> str:
     if len(history) < 2:
         return user_input
@@ -124,21 +170,22 @@ def rewrite_query(user_input: str, history: list) -> str:
         "Rewritten query:"
     )
     resp = _oai_client.chat.completions.create(
-        model=AZURE_LLM_DEPLOY,
+        model=AZURE_REWRITE_DEPLOY,
         messages=[{"role": "user", "content": rewrite_prompt}],
         temperature=0,
-        max_tokens=100,
+        max_tokens=80,
     )
     return resp.choices[0].message.content.strip()
 
 
-def search_work_orders(query: str) -> list:
-    fetch_k = TOP_K * 3 if is_recency_query(query) else TOP_K
+def search_work_orders(query: str) -> tuple:
+    fetch_k = COUNT_FETCH_K if is_count_query(query) else (TOP_K * 3 if is_recency_query(query) else TOP_K)
     results = _search_client.search(
         search_text=query,
         query_type=QueryType.SEMANTIC,
         semantic_configuration_name="default",
         top=fetch_k,
+        include_total_count=True,
         select=["wo_no", "date", "date_ts", "equipment", "equip_id",
                 "line", "group", "maint_type", "source", "content", "technician"],
     )
@@ -158,18 +205,34 @@ def search_work_orders(query: str) -> list:
             "source":     r["source"],
             "technician": technician,
         })
+    total_count = results.get_count() or len(items)
     if is_recency_query(query):
         items = sorted(items, key=lambda x: x["date_ts"], reverse=True)[:TOP_K]
-    return items
+    return items, total_count
 
 
-def build_messages(query: str, items: list, history: list) -> list:
+def build_messages(query: str, items: list, history: list, total_count: int = 0) -> list:
     context = ""
     for item in items:
-        context += f"\n--- {item['ref']} ---\n{item['text']}\n"
-    system_prompt = f"{SYSTEM_BASE}\n\nRELEVANT WORK ORDERS FOR THIS QUERY:\n{context}"
+        text = item['text']
+        snippet = text[:WO_TEXT_LIMIT] + "…" if len(text) > WO_TEXT_LIMIT else text
+        context += f"\n--- {item['ref']} ---\n{snippet}\n"
+    if is_count_query(query):
+        date_window = parse_date_window(query)
+        if date_window:
+            label, since = date_window
+            since_str = since.strftime("%Y-%m-%d")
+            date_clause = (f"The user is asking specifically about **{label}** (on or after {since_str}). "
+                           f"COUNT ONLY work orders whose date is >= {since_str} from the records below — ignore older ones.")
+        else:
+            date_clause = (f"Azure AI Search matched **{total_count} total records** in the database for this query. "
+                           f"Use {total_count} as the authoritative total count if no time window is specified.")
+        count_note = f"\n\nCOUNT METADATA: {date_clause} {len(items)} work orders are provided as context (maximum retrieved for count queries)."
+    else:
+        count_note = f"\n\n(Showing {len(items)} of {total_count} total matching records in the database.)"
+    system_prompt = f"{SYSTEM_BASE}{count_note}\n\nRELEVANT WORK ORDERS FOR THIS QUERY:\n{context}"
     messages = [{"role": "system", "content": system_prompt}]
-    for msg in history[-12:]:
+    for msg in history[-6:]:
         if msg.get("role") in ("user", "assistant"):
             messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": query})
@@ -181,7 +244,7 @@ def call_llm(messages: list) -> str:
         model=AZURE_LLM_DEPLOY,
         messages=messages,
         temperature=0.2,
-        max_tokens=1500,
+        max_tokens=800,
     )
     return resp.choices[0].message.content
 
@@ -363,18 +426,22 @@ def query_handler(req: func.HttpRequest) -> func.HttpResponse:
     try:
         search_query = rewrite_query(question, history)
         logging.info("REWRITE '%s' -> '%s'", question[:80], search_query[:80])
-        items        = search_work_orders(search_query)
-        messages     = build_messages(question, items, history)
+        items, total_count = search_work_orders(search_query)
+        messages           = build_messages(question, items, history, total_count)
         answer       = call_llm(messages)
 
         work_orders = [
             {
                 "ref":        i["ref"],
+                "wo_no":      i["wo_no"],
                 "date":       i["date"],
                 "technician": i["technician"],
                 "equipment":  i["equipment"],
                 "maint_type": i["maint_type"],
                 "line":       i["line"],
+                "group":      i.get("group", ""),
+                "source":     i.get("source", ""),
+                "content":    i["text"],
             }
             for i in items
         ]
