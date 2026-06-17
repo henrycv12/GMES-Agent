@@ -5,26 +5,24 @@ The GMES Agent core RAG system is complete and operational (Azure OpenAI, AI Sea
 
 ---
 
-## 1. Recurring Failure Analytics & Cross-Line Pattern Queries
+## 1. Recurring Failure Analytics & Cross-Line Pattern Queries ✅ IMPLEMENTED
 
-**Description**: Aggregated analytics to answer questions like "Which lines had the most diverter jam failures in Q1?" or "What are the top 3 recurring failures in EPS shop in the last 90 days?" These require aggregation logic beyond semantic search.
+**Description**: Aggregated analytics to answer questions like "Which lines had the most diverter jam failures in Q1?" or "What are the top 3 recurring failures in EPS shop in the last 90 days?"
 
-**Technical Approach**:
-- Add aggregation endpoints to the Azure Functions API
-- Use Azure AI Search facets or Azure SQL for grouped queries
-- Option A: Extend Azure AI Search with faceted search (no additional cost)
-- Option B: Add Azure SQL Database for complex aggregations (additional cost)
+**Implementation**: `POST /api/analytics` endpoint in `api/function_app.py` — client-side aggregation over Azure AI Search results. Supports:
+- Group by: `line`, `equipment`, `maint_type`, `group`, or multi-field (e.g. `["line", "maint_type"]`)
+- Date range filtering (`date_from` / `date_to`)
+- Text filter (e.g. `"diverter jam"`)
+- Cross-line comparison (`compare_lines`)
+- Time-based aggregation (`week`, `month`, `quarter`)
 
-**Costs**:
-- **Option A (AI Search facets)**: No additional cost — uses existing Azure AI Search
-- **Option B (Azure SQL)**: ~$50-100/month for DTU-based tier (depends on query volume)
+**Cost**: $0 — uses existing Azure AI Search and Azure Functions
 
-**Tools Needed**:
-- Azure Functions API updates (Python)
-- Azure AI Search facet configuration OR Azure SQL Database provisioning
-- No additional Power Platform licenses required
+**Limitation**: Client-side aggregation fetches up to 2,000 documents per query. Sufficient for current dataset; if full 7-year DB is indexed, consider adding server-side facets.
 
 **Priority**: High — directly tied to DX KPIs (-20% unplanned downtime, +10pp PM compliance)
+
+**Status**: ✅ Done (branch `swe-1.6-analytics`, merged Jun 17 2026)
 
 ---
 
@@ -96,13 +94,12 @@ The GMES Agent core RAG system is complete and operational (Azure OpenAI, AI Sea
 
 | Item | Tool/Service | Estimated Cost | Priority | Status |
 |---|---|---|---|---|
-| Recurring failure analytics (Option A) | Azure AI Search facets | $0 | High | Ready to implement |
-| Recurring failure analytics (Option B) | Azure SQL Database | $50-100/month | High | Requires provisioning |
+| Recurring failure analytics | Azure AI Search (client-side) | $0 | High | ✅ Done |
 | Create PM Task action | Power Automate Premium | $15-20/user/month | Low | Requires license |
 | Export Summary action | Power Automate Premium | $15-20/user/month | Medium | Requires license |
 | Teams integration | Copilot Studio subscription | $20-50/month | High | BLOCKED by billing |
 
-**Minimum cost to complete deployment**: $0 (using Azure AI Search facets for analytics, deferring output actions and Teams integration until licensing resolved)
+**Minimum cost to complete deployment**: $0 (analytics done, deferring output actions and Teams integration until licensing resolved)
 
 **Recommended cost for full deployment**: ~$85-170/month (Azure SQL + Power Automate Premium + Copilot Studio subscription)
 

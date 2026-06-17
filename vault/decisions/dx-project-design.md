@@ -96,7 +96,7 @@ Data Layer       → Azure SQL Database
 
 | NO | Team | Week | Project Title | Current Status | Target | Planned Progress | Actual Progress | Flag | Note/Issue |
 |---|---|---|---|---|---|---|---|---|---|
-| 6 | PE | W25 | Development of an AI-based Work Order Management and Analytics System | Testing & Feedback | Jun 26 | 85% | 80% | 🟡 | Core RAG system complete: Azure OpenAI `gpt-4o`, Azure AI Search, Azure Functions `/api/query`, Power Automate custom connector, Azure Table Storage multi-turn history, inline WO citations, query rewriting, recency-aware retrieval — all implemented and committed. PE team actively validating response quality. Pending: recurring failure analytics, automated nightly GMES sync, Teams integration, output actions (Create PM Task, Export Summary). **Note**: Teams integration requires a Copilot Studio subscription (Teams Premium is NOT needed — Copilot Studio publishes directly to Teams channel). Automated nightly sync is blocked on HQ GMES API access, not a subscription issue. |
+| 6 | PE | W25 | Development of an AI-based Work Order Management and Analytics System | Testing & Feedback | Jun 26 | 90% | 85% | 🟡 | Core RAG system complete: Azure OpenAI `gpt-4o`, Azure AI Search, Azure Functions `/api/query`, Power Automate custom connector, Azure Table Storage multi-turn history, inline WO citations, query rewriting, recency-aware retrieval — all implemented and committed. PE team actively validating response quality. Pending: automated nightly GMES sync (blocked on HQ API), Teams integration (needs Copilot Studio subscription), output actions (Create PM Task, Export Summary, needs Power Automate Premium). **Note**: Teams integration requires a Copilot Studio subscription (Teams Premium is NOT needed — Copilot Studio publishes directly to Teams channel). Automated nightly sync is blocked on HQ GMES API access, not a subscription issue. |
 
 ## Gap Analysis — What GMES Agent Still Needs
 
@@ -115,10 +115,10 @@ Data Layer       → Azure SQL Database
 - [x] **Adaptive Card responses** — rich card output from Azure Functions for Copilot Studio display — Jun 16 2026
 - [x] **Local Streamlit UI** — full-featured chat interface with WO cards and multi-turn state — Jun 16 2026
 - [x] **Incremental ingestion** — duplicate detection, skips already-indexed WOs on each run — Jun 16 2026
+- [x] **Recurring failure analytics** — `POST /api/analytics` endpoint: group by line/equipment/type, date range, text filter, cross-line comparison, time-based aggregation (week/month/quarter) — Jun 17 2026
+- [x] **Cross-line pattern queries** — multi-field grouping (e.g. `["line","maint_type"]`) with frequency ranking — Jun 17 2026
 
 ### 🟡 Pending (in priority order)
-- [ ] **Recurring failure analytics** — top-N failures by line/shop/date range; current retrieval is semantic, not aggregated (highest DX KPI value)
-- [ ] **Cross-line pattern queries** — frequency rollups ("which lines had the most X failures in Q1?")
 - [ ] **Create PM Task** output action — one-click handoff to PM checklist (requires Power Automate Premium)
 - [ ] **Export Summary** — cited records + cause ready to share with team (requires Power Automate Premium)
 - [ ] **Automated nightly sync** from GMES — blocked on HQ GMES API access; manual `.xlsx` export is the current workaround
