@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: #F5F4EF;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #1A1A1A;
+}
+
+.aui-root {
+  height: 100%;
+}
+
+.aui-thread-viewport {
+  overflow-y: auto;
+  height: 100%;
+}
+
+.aui-user-message-content {
+  background: #EDE9DF;
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.aui-assistant-message-content {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #E0DDD5;
+}
+
+.aui-composer-input {
+  border-radius: 1rem;
+  border: 1px solid #D0CCC0;
+}
+
+.aui-composer-input:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: #CC785C;
+  border-color: #CC785C;
+}
+
+.aui-composer-send {
+  background-color: #CC785C;
+  color: white;
+}
+
+.aui-composer-send:hover {
+  background-color: #b8664a;
+}
