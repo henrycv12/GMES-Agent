@@ -22,6 +22,34 @@ This project has `.codegraph/` initialized. Use CodeGraph MCP tools for ALL code
 | Single symbol source / signature | `codegraph_node` |
 | Project file structure | `codegraph_files` |
 
+## File type support
+CodeGraph supports these file types — use codegraph tools, NOT Read/Grep:
+- `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs` (JavaScript/TypeScript)
+- `.py` (Python)
+- `.go` (Go)
+- `.rs` (Rust)
+- `.java` (Java)
+- `.cs` (C#)
+- `.php` (PHP)
+- `.rb` (Ruby)
+- `.c`, `.h`, `.cpp`, `.hpp`, `.cc` (C/C++)
+- `.swift` (Swift)
+- `.kt`, `.kts` (Kotlin)
+- `.scala`, `.sc` (Scala)
+- `.dart` (Dart)
+- `.svelte`, `.vue` (Web components)
+- `.liquid` (Liquid templates)
+- `.pas` (Pascal)
+- `.lua`, `.luau` (Lua)
+
+**When to use Read:**
+- Files NOT in the supported list above (`.json`, `.css`, `.md`, config files, etc.)
+- When CodeGraph is unavailable
+
+**When to use Grep:**
+- Raw string literals (e.g., error messages) that are not symbols
+- Text patterns that don't correspond to code symbols
+
 ## Rules
 - Call `codegraph_context` FIRST for any task involving code — it composes search + node + callers + callees in one call
 - Source returned by CodeGraph tools is verbatim live file content — treat it as already read, do not re-open
