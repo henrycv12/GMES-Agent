@@ -8,11 +8,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        brand: "#CC785C",
-        surface: "#F5F4EF",
-        sidebar: "#EEECE3",
-        border: "#E0DDD5",
-        muted: "#7A7568",
+        brand: "var(--c-brand)",
+        surface: "var(--c-bg)",
+        sidebar: "var(--c-surface-1)",
+        border: "var(--c-border)",
+        muted: "var(--c-text-3)",
       },
     },
   },

@@ -1,35 +1,33 @@
 # Project Context
 
 ## What this project does
-GMES Agent is a fully offline AI maintenance assistant for LG Electronics TN Production Engineering. It indexes 7-year historical work order exports from GMES (EMS system) into a local vector database and answers natural-language troubleshooting questions from PE engineers — identifying past failures, root causes, and resolutions without any cloud dependency.
+GMES Agent is an AI maintenance assistant for LG Electronics TN Production Engineering. It indexes historical work order exports from GMES into Azure AI Search and answers natural-language troubleshooting questions — identifying past failures, root causes, resolutions, MTBF, and anomalies. ~47K work orders indexed.
 
 ## Current status
-- **Working:** Work order ingestion from Excel/CSV (incremental), ChromaDB vector search, Streamlit chat UI, Azure OpenAI GPT-4o LLM answering, recency-aware retrieval, Azure OpenAI `text-embedding-3-small` batch embedding, multi-turn query rewriting (resolves references like "same machine", "that issue"), ~2–5 sec response time
-- **In progress:** Response quality validation with PE team; recurring failure analytics
+- **Working:** Work order ingestion from Excel/BAK (incremental upsert, WO-number based IDs), Azure AI Search BM25 + semantic ranking, React chat UI, multi-turn conversation with query rewriting, clickable WO badges, pinned queries, follow-up suggestions, dark mode, Analytics (Work Orders / MTBF / Anomalies / Failure Analysis tabs)
+- **In progress:** Nothing active
 - **Broken:** Nothing known
-- **Pending:** Export summary feature, PM checklist generator, recurring failures dashboard (top-N by line/shop/date range), Teams integration
+- **Pending:** Auth (Azure AD / NextAuth.js — requires IT to create App Registration), automated GMES export sync (requires HQ API access)
 
 ## Tech stack
-- **LLM:** Azure OpenAI `gpt-4o` (cloud, fast) — falls back to Ollama `llama3.2:1b` if no `.env`
-- **Embeddings:** Azure OpenAI `text-embedding-3-small` (auto-detected from `.env`; falls back to Ollama `nomic-embed-text`)
-- **Vector DB:** ChromaDB (persistent local, `./chroma_db/`)
-- **UI:** Streamlit
-- **Data source:** GMES export (`.xlsx` or `.csv`) — 19,000+ work orders
-- **Python:** 3.13.3 on Windows
+- **LLM:** Azure OpenAI `gpt-4o` on `hcol-mqfq4gia-eastus2`
+- **Search:** Azure AI Search free tier — BM25 + semantic ranking, no embeddings needed
+- **Frontend:** Next.js 14, React 18, TypeScript, Tailwind CSS, `@assistant-ui/react`
+- **Charts:** Recharts
+- **Data source:** GMES export (`.xlsx`, `.bak`, `.csv`) — ~47K work orders
 
 ## Key file map
-- **Entry point:** `app.py` — Streamlit chat UI
-- **Ingestion:** `ingest_excel.py` — reads Excel/CSV, embeds via Azure OpenAI, stores in ChromaDB (incremental)
-- **Config:** `.env` — Azure OpenAI credentials (gitignored)
-- **Legacy:** `ingest.py` — PDF ingestion (FIKE manual, not in active use)
-- **DB:** `./chroma_db/` — persistent vector store (gitignored)
-- **Data:** `Excel_Export_[...].xlsx/.csv` — GMES work order export (gitignored)
+- **Migration:** `migrate_to_search.py` — reads Excel/BAK exports, normalizes WO numbers, upserts into Azure AI Search (`merge_or_upload_documents`); `--recreate` flag for full rebuild
+- **Chat API:** `frontend/app/api/query/route.ts` — query rewrite → semantic search → LLM answer → parallel suggestion generation
+- **Analytics API:** `frontend/app/api/analytics/route.ts` — facet aggregation
+- **MTBF API:** `frontend/app/api/mtbf/route.ts` — mean days between failures per equipment
+- **Anomaly API:** `frontend/app/api/anomaly/route.ts` — compares recent vs. prior-year failure counts
+- **Extract API:** `frontend/app/api/extract/route.ts` — LLM root-cause tagging (parallel batches)
+- **State:** `frontend/components/runtime-provider.tsx` — conversations, woMap, suggestionsMap, pinnedQueries, theme; all in localStorage
+- **Chat UI:** `frontend/components/gmes-thread.tsx` — WoBadgeOrCode, suggestion chips, pin button
+- **Config:** `.env` (root, for migration) + `frontend/.env.local` (for Next.js)
 
-## Known issues
-- Full ingest of 19,000+ records takes ~4–5 min with Azure OpenAI; ~45 min with Ollama CPU fallback
-- Azure GPT-4o response time ~2–5 sec; Ollama `llama3.2:1b` fallback ~15–25 sec
-- ChromaDB `get()` with offset used to detect existing IDs — may be slow on very large collections
-- Windows asyncio ProactorEventLoop bug mitigated with `WindowsSelectorEventLoopPolicy`
-- Azure OpenAI key stored in `.env` — must be rotated if exposed; never commit `.env`
-- PowerShell backtick multiline `Set-Content` corrupts `.env` — use here-string + `Add-Content` instead
-
+## Known constraints
+- Azure AI Search free tier: skip+top ≤ 1000 (workaround: use facets for aggregation, top=1000 cap for MTBF)
+- Manual GMES export required — no automated sync (HQ API access not available)
+- Azure AI Search free tier storage: 50MB — current ~47K WOs fit; adding significantly more records may require upgrade to Basic (~$73/mo)

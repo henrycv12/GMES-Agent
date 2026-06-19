@@ -1,35 +1,54 @@
-# Known Issues — Active
+# Known Issues
 
 ## [RESOLVED] Embedding bottleneck
 - **Problem:** `ollama.embeddings()` called one record at a time — 7,475 records took hours
-- **Fix:** Switched to `ollama.embed(input=[...])` batch API — 100 texts per call, ~5–6 min total
-- **Status:** ✅ Resolved (commit cdc0f25)
-
-## [RESOLVED] Wrong dates on recency queries
-- **Problem:** LLM referenced 2020 records when asked for "most recent" — no date sorting
-- **Fix:** Sort Excel by `Maint. Plan Date` descending before ingest; store `date_ts` epoch in metadata; re-rank by `date_ts` when recency keywords detected in query
-- **Status:** ✅ Resolved (commit 711b46e) — requires re-ingest to populate `date_ts`
-
-## [RESOLVED] Windows asyncio error
-- **Problem:** `ConnectionResetError` / `ProactorBasePipeTransport` exception on Windows with streaming Ollama
-- **Fix:** `asyncio.WindowsSelectorEventLoopPolicy()` at startup + `stream=False` in all Ollama calls
+- **Fix:** Switched to batch embedding → then removed embeddings entirely; Azure AI Search handles BM25 + semantic ranking natively
 - **Status:** ✅ Resolved
 
-## [RESOLVED] Response time ~15–25s
-- **Problem:** `llama3.2:1b` on CPU took 15–25s per query — KPI target is ≤5s
-- **Fix:** Switched to Azure OpenAI `gpt-4o` exclusively; Ollama removed from codebase
-- **Status:** ✅ Resolved — response time now ~2–5s
+## [RESOLVED] Wrong dates on recency queries
+- **Problem:** LLM referenced old records when asked for "most recent" — no date sorting
+- **Fix:** Store `date_ts` epoch in index; client-sort by `date_ts` desc when recency keywords detected
+- **Status:** ✅ Resolved
 
-## [ACTIVE] Azure AI Search storage limit — cannot index full database
-- **Problem:** Azure AI Search free tier is capped at 50MB. Current index uses 11MB with only 10% of the WO database loaded. Full database (~110MB) exceeds the limit.
-- **Options (must stay within Microsoft tenant — external vector DBs not allowed):**
-  - **A — Upgrade to Basic tier**: ~$73/month, 2GB storage. No code changes.
-  - **B — Recency split (free)**: Index only last 12–18 months in Azure AI Search (Copilot Studio path); keep full history in local ChromaDB (Streamlit path).
-- **Workaround:** Do not ingest more than ~40% of the database until resolved.
-- **Status:** ⛔ BLOCKED — architecture decision pending
+## [RESOLVED] Windows asyncio error
+- **Problem:** `ConnectionResetError` on Windows with streaming calls
+- **Fix:** `stream=False` in all LLM calls; removed Ollama dependency entirely
+- **Status:** ✅ Resolved
+
+## [RESOLVED] Analytics 500 error
+- **Problem:** Pagination loop hit Azure AI Search free-tier limit (skip+top ≤ 1000)
+- **Fix:** Switched to server-side facet aggregation (`top=0`); requires `facetable=True` on relevant fields
+- **Status:** ✅ Resolved — re-migration required after schema change (already done)
+
+## [RESOLVED] WO badge click opened nothing
+- **Problem:** `wos.find()` failed due to "35734.0" vs "35734" format mismatch (pandas float serialization)
+- **Fix:** `normalize_wo_no()` in migration; flexible match in click handler (exact, `.0` strip, parseInt)
+- **Status:** ✅ Resolved
+
+## [RESOLVED] React hydration mismatch
+- **Problem:** `useState` initializer read localStorage on server, caused client/server HTML mismatch
+- **Fix:** Start with blank conversation in `useState`; load from localStorage in `useEffect`
+- **Status:** ✅ Resolved
+
+## [RESOLVED] "Composer is not available" error on suggestion chips
+- **Problem:** `useComposerRuntime()` inside `AssistantMessage` resolved to the message edit composer (not available for assistant messages)
+- **Fix:** Use `useThreadRuntime().composer` instead to access the thread-level composer
+- **Status:** ✅ Resolved
 
 ## [ACTIVE] Manual GMES export required
-- **Problem:** No automated nightly sync from GMES — engineer must manually export Excel
-- **Workaround:** Export when new WOs need to be added; incremental ingest skips existing records
+- **Problem:** No automated nightly sync — engineer must manually export Excel/BAK and re-run migration
+- **Workaround:** Run `python migrate_to_search.py` after each export (incremental, safe to repeat)
 - **Blocker:** Requires HQ GMES API access — not an internal IT decision
+- **Status:** ⛔ Pending — architectural dependency on HQ
 
+## [ACTIVE] Azure AI Search storage ceiling
+- **Problem:** Free tier capped at 50MB. ~47K WOs currently fit; significant growth may exceed limit
+- **Options:**
+  - **Upgrade to Basic** (~$73/month, 2GB) — no code changes required
+  - **Field pruning** — reduce `content` field size in `row_to_content()` to shrink index
+- **Status:** ⚠️ Monitor — not blocking yet; revisit when index approaches 40MB
+
+## [ACTIVE] No authentication
+- **Problem:** Frontend has no login — anyone on the network can access it
+- **Plan:** NextAuth.js + Azure AD (Entra ID); requires IT to create App Registration
+- **Status:** ⛔ Blocked on IT action

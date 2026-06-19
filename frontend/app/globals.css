@@ -2,10 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Color palette ── */
+:root {
+  --c-bg:           #F5F4EF;
+  --c-surface-1:    #EEECE3;
+  --c-surface-2:    #EDE9DF;
+  --c-surface-3:    #DDD9D0;
+  --c-card:         #ffffff;
+  --c-card-alt:     #FAFAF7;
+  --c-code-bg:      #F0EDE6;
+  --c-border:       #E0DDD5;
+  --c-border-input: #D0CCC0;
+  --c-text:         #1A1A1A;
+  --c-text-2:       #4A4540;
+  --c-text-3:       #7A7568;
+  --c-text-4:       #A09990;
+  --c-brand:        #CC785C;
+  --c-brand-hover:  #b8664a;
+  --c-wo:           #A8785A;
+  --c-overlay:      rgba(0,0,0,0.45);
+}
+
+[data-theme="dark"] {
+  --c-bg:           #111111;
+  --c-surface-1:    #1C1C1C;
+  --c-surface-2:    #272727;
+  --c-surface-3:    #333333;
+  --c-card:         #1E1E1E;
+  --c-card-alt:     #1A1A1A;
+  --c-code-bg:      #2A2218;
+  --c-border:       #343434;
+  --c-border-input: #444444;
+  --c-text:         #E5E2DC;
+  --c-text-2:       #B0ADA8;
+  --c-text-3:       #88847F;
+  --c-text-4:       #5A5754;
+  --c-brand:        #E0895F;
+  --c-brand-hover:  #CC7A50;
+  --c-wo:           #C8987A;
+  --c-overlay:      rgba(0,0,0,0.65);
+}
+
 body {
-  background: #F5F4EF;
+  background: var(--c-bg);
   font-family: system-ui, -apple-system, sans-serif;
-  color: #1A1A1A;
+  color: var(--c-text);
 }
 
 .aui-root {
@@ -18,44 +59,46 @@ body {
 }
 
 .aui-user-message-content {
-  background: #EDE9DF;
+  background: var(--c-surface-2);
   border-radius: 1rem;
   padding: 0.75rem 1rem;
 }
 
 .aui-assistant-message-content {
-  background: #ffffff;
+  background: var(--c-card);
   border-radius: 1rem;
   padding: 0.75rem 1rem;
-  border: 1px solid #E0DDD5;
+  border: 1px solid var(--c-border);
 }
 
 .aui-composer-input {
   border-radius: 1rem;
-  border: 1px solid #D0CCC0;
+  border: 1px solid var(--c-border-input);
 }
 
 .aui-composer-input:focus {
   outline: none;
-  ring: 2px;
-  ring-color: #CC785C;
-  border-color: #CC785C;
+  border-color: var(--c-brand);
+}
+
+.placeholder-composer::placeholder {
+  color: var(--c-text-4);
 }
 
 .aui-composer-send {
-  background-color: #CC785C;
+  background-color: var(--c-brand);
   color: white;
 }
 
 .aui-composer-send:hover {
-  background-color: #b8664a;
+  background-color: var(--c-brand-hover);
 }
 
 /* ── Markdown prose styles for assistant messages ── */
 .md-content h3 {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #1A1A1A;
+  color: var(--c-text);
   margin-top: 1.1rem;
   margin-bottom: 0.35rem;
 }
@@ -87,13 +130,13 @@ body {
 }
 
 .md-content code {
-  background: #F0EDE6;
-  border: 1px solid #E0DDD5;
+  background: var(--c-code-bg);
+  border: 1px solid var(--c-border);
   border-radius: 4px;
   padding: 0.1em 0.35em;
   font-size: 0.8rem;
   font-family: ui-monospace, monospace;
-  color: #A8785A;
+  color: var(--c-wo);
 }
 
 .md-content table {
@@ -102,28 +145,28 @@ body {
   font-size: 0.8rem;
   margin-top: 0.6rem;
   margin-bottom: 0.6rem;
-  border: 1px solid #E0DDD5;
+  border: 1px solid var(--c-border);
   border-radius: 8px;
   overflow: hidden;
 }
 
 .md-content thead {
-  background-color: #F5F3EE;
+  background-color: var(--c-surface-1);
 }
 
 .md-content th {
   text-align: left;
   padding: 0.45rem 0.75rem;
   font-weight: 600;
-  color: #4A4540;
-  border-bottom: 1px solid #E0DDD5;
+  color: var(--c-text-2);
+  border-bottom: 1px solid var(--c-border);
   white-space: nowrap;
 }
 
 .md-content td {
   padding: 0.4rem 0.75rem;
-  color: #1A1A1A;
-  border-bottom: 1px solid #F0EDE6;
+  color: var(--c-text);
+  border-bottom: 1px solid var(--c-code-bg);
 }
 
 .md-content tr:last-child td {
@@ -131,5 +174,5 @@ body {
 }
 
 .md-content tr:hover td {
-  background-color: #FAFAF7;
+  background-color: var(--c-surface-1);
 }

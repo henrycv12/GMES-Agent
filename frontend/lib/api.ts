@@ -14,7 +14,7 @@ export interface QueryResponse {
   answer: string;
   work_orders: WorkOrder[];
   query_used: string;
-  card: string;
+  suggestions?: string[];
 }
 
 export interface AnalyticsResult {
@@ -78,4 +78,99 @@ export async function queryAnalytics(
     throw new Error(`Analytics failed: ${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<AnalyticsResponse>;
+}
+
+export interface MtbfResult {
+  equipment: string;
+  failure_count: number;
+  mtbf_days: number | null;
+  first_failure: string;
+  last_failure: string;
+}
+
+export interface MtbfParams {
+  equipment?: string;
+  line?: string;
+  group?: string;
+  date_from?: string;
+  date_to?: string;
+  top_equipment?: number;
+}
+
+export async function queryMtbf(params: MtbfParams): Promise<{ results: MtbfResult[] }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+  const res = await fetch(`${baseUrl}/api/mtbf`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`MTBF failed: ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
+  }
+  return res.json() as Promise<{ results: MtbfResult[] }>;
+}
+
+export interface AnomalyResult {
+  equipment: string;
+  recent_count: number;
+  prior_count: number;
+  change_pct: number | null;
+  is_new: boolean;
+}
+
+export interface AnomalyParams {
+  window_days?: number;
+  min_recent?: number;
+  min_change_pct?: number;
+  line?: string;
+  group?: string;
+}
+
+export async function queryAnomaly(params: AnomalyParams): Promise<{ results: AnomalyResult[]; window_days: number }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+  const res = await fetch(`${baseUrl}/api/anomaly`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Anomaly failed: ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
+  }
+  return res.json() as Promise<{ results: AnomalyResult[]; window_days: number }>;
+}
+
+export interface ExtractionGroup {
+  label: string;
+  count: number;
+}
+
+export interface ExtractParams {
+  query?: string;
+  equipment?: string;
+  top?: number;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface ExtractResponse {
+  total_analyzed: number;
+  by_root_cause: ExtractionGroup[];
+  by_failure_mode: ExtractionGroup[];
+  by_component: ExtractionGroup[];
+}
+
+export async function queryExtract(params: ExtractParams): Promise<ExtractResponse> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+  const res = await fetch(`${baseUrl}/api/extract`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Extract failed: ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
+  }
+  return res.json() as Promise<ExtractResponse>;
 }

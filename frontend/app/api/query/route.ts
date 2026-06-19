@@ -13,7 +13,7 @@ const SEARCH_ENDPOINT = process.env.AZURE_SEARCH_ENDPOINT!;
 const SEARCH_KEY = process.env.AZURE_SEARCH_KEY!;
 const SEARCH_INDEX = process.env.AZURE_SEARCH_INDEX ?? "work-orders";
 
-const TOP_K = 10;
+const TOP_K = 25;
 const COUNT_FETCH_K = 50;
 const COUNT_KEYWORDS = [
   "how many", "count", "total", "number of", "how often", "how much",
@@ -44,7 +44,7 @@ const SYSTEM_BASE =
   "GROUNDING RULE (CRITICAL): You may ONLY reference work orders that appear verbatim in the provided context. " +
   "NEVER invent, fabricate, or infer WO numbers, dates, technicians, or equipment names that are not explicitly in the records given to you. " +
   "If you are counting work orders, count only those present in the context — never round up or pad the list. " +
-  "If a field is missing from a record, omit that record from your cited list rather than filling it with placeholders. " +
+  "If a field is missing from a record, omit that record from your answer rather than filling it with placeholders. " +
   "The records provided are the top matches retrieved from a larger database — if asked how many records exist in total, say you can only see the top retrieved results and cannot count the full database.\n" +
   "ALWAYS answer from the work order records provided. Never say 'I'm not sure how to help' — " +
   "if work orders are provided, extract the answer from them directly. " +
@@ -54,11 +54,9 @@ const SYSTEM_BASE =
   "If no relevant history exists, clearly say so.\n" +
   "DATE RULE: Always include the date inline whenever referencing a specific work order or event (e.g., 'On **2024-03-15**, **Kim** replaced...'). Never omit dates.\n" +
   "RECURRENCE RULE: For recurrence/frequency questions, state the total count explicitly, then list each occurrence with its date.\n" +
-  "After your answer, always append a blank line followed by:\n" +
-  "---\n" +
-  "📋 **Cited Work Orders**\n" +
-  "Then list each work order you actually used as: `• WO #[number] | [date] | [technician] | [equipment]`\n" +
-  "Only list WOs that were genuinely relevant to the answer. Maximum 5 entries.";
+  "WO FORMAT RULE (CRITICAL): Reference work orders inline using a backtick code span, e.g. `WO #35734`. " +
+  "NEVER append a 'Cited Work Orders' section, a '---' divider, or any list of WOs at the end of your response. " +
+  "Every WO reference must appear only inline within the answer text itself.";
 
 // ---------------------------------------------------------------------------
 // Clients (module-level, reused across requests)
@@ -280,28 +278,35 @@ async function callLlm(messages: { role: string; content: string }[]): Promise<s
   return resp.choices[0].message.content ?? "";
 }
 
-function buildCard(items: WOItem[]): string {
-  if (!items.length) return "";
-  const seen = new Set<string>();
-  const facts: { title: string; value: string }[] = [];
-  for (const i of items.slice(0, 6)) {
-    if (seen.has(i.wo_no)) continue;
-    seen.add(i.wo_no);
-    facts.push({
-      title: `WO #${i.wo_no} · ${i.date}`,
-      value: `${i.equipment} · ${i.maint_type} · ${i.technician}`,
+async function generateSuggestions(question: string, items: WOItem[]): Promise<string[]> {
+  const equipmentMentioned = [...new Set(items.slice(0, 5).map((i) => i.equipment).filter(Boolean))].join(", ");
+  const prompt =
+    "You are a maintenance assistant. Given the user's question and context about the equipment mentioned, " +
+    "suggest 2-3 concise follow-up questions a maintenance engineer might want to ask next. " +
+    "Rules:\n" +
+    "- Each question must be self-contained (no 'it' or 'that' references — name the equipment/WO explicitly)\n" +
+    "- Keep each question under 12 words\n" +
+    "- Focus on actionable follow-ups: deeper diagnosis, fix steps, recurrence, who fixed it, parts needed\n" +
+    "- Output ONLY a JSON array of strings, e.g. [\"Q1\", \"Q2\", \"Q3\"]\n\n" +
+    `User question: ${question}\n` +
+    `Equipment in context: ${equipmentMentioned || "various"}\n` +
+    "Suggestions (JSON array only):";
+  try {
+    const resp = await getOai().chat.completions.create({
+      model: REWRITE_DEPLOY,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+      max_tokens: 120,
     });
+    const raw = resp.choices[0].message.content?.trim() ?? "[]";
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.slice(0, 3).map(String);
+  } catch {
+    // suggestions are non-critical
   }
-  return JSON.stringify({
-    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-    type: "AdaptiveCard",
-    version: "1.5",
-    body: [
-      { type: "TextBlock", text: "📋 Cited Work Orders", weight: "Bolder", size: "Medium", color: "Accent" },
-      { type: "FactSet", facts },
-    ],
-  });
+  return [];
 }
+
 
 // ---------------------------------------------------------------------------
 // Route handler
@@ -324,11 +329,15 @@ export async function POST(req: NextRequest) {
     const searchQuery = await rewriteQuery(question, history);
     const { items, totalCount } = await searchWorkOrders(searchQuery);
     const messages = buildMessages(question, items, history, totalCount);
-    const answer = await callLlm(messages);
+    // Run main answer and follow-up suggestions in parallel
+    const [answer, suggestions] = await Promise.all([
+      callLlm(messages),
+      generateSuggestions(question, items),
+    ]);
 
     const workOrders = items.map((i) => ({
       ref: i.ref,
-      wo_no: i.wo_no,
+      wo_no: i.wo_no.replace(/\.0$/, ""),
       date: i.date,
       technician: i.technician,
       equipment: i.equipment,
@@ -343,7 +352,7 @@ export async function POST(req: NextRequest) {
       answer,
       work_orders: workOrders,
       query_used: searchQuery,
-      card: buildCard(items),
+      suggestions,
     });
   } catch (err) {
     console.error("query route error:", err);
